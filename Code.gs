@@ -91,11 +91,81 @@ function getBootstrap_(session) {
   getRows_('CONFIG').forEach(r => configMap[r.key] = r.value);
   let cards = getRows_('CARDS').filter(r => bool_(r.enabled)).sort((a,b)=>(+a.sort_order)-(+b.sort_order));
   cards = cards.filter(c => visibleFor_(c, safe));
+
+  /* ── 注入合成卡片 ── */
+  // 個人緊急聯絡資料 — 只對 member+ 顯示
+  if (safe && roleRank_(safe.role) >= roleRank_('member')) {
+    cards.push({
+      card_id: 'emergency_member_info',
+      title: '個人緊急聯絡資料',
+      description: '你的緊急聯絡資料、領袖聯絡、酒店電話及印尼官方緊急電話',
+      icon: '🆘',
+      target_sheet: 'MEMBERS',
+      visibility: 'member',
+      sort_order: 0.5,
+      enabled: true,
+      editable_in_admin: false
+    });
+  }
+  // 行程路線圖 — public 可見（有座標才顯示內容）
+  if (hasSheet_('route_map_locations')) {
+    cards.push({
+      card_id: 'route_map',
+      title: '行程路線圖',
+      description: '在地圖上標示行程各站地點及日期',
+      icon: '🗺️',
+      target_sheet: 'route_map_locations',
+      visibility: 'public',
+      sort_order: 1.5,
+      enabled: true,
+      editable_in_admin: false
+    });
+  }
+  cards.sort((a,b)=>(+a.sort_order)-(+b.sort_order));
+
   return { bootstrap: { configMap, session: safe }, cards };
+}
+
+function hasSheet_(name) {
+  try { return !!ss_().getSheetByName(name); } catch { return false; }
 }
 
 function getCardData_(session, cardId) {
   const safe = session && session.username ? verifySession_(session) : null;
+
+  /* ── 合成卡片：不依賴 CARDS 工作表 ── */
+  if (cardId === 'emergency_member_info') {
+    requireRole_(safe, 'member');
+    const syntheticCard = {
+      card_id: 'emergency_member_info',
+      title: '個人緊急聯絡資料',
+      description: '你的緊急聯絡資料、領袖聯絡、酒店電話及印尼官方緊急電話',
+      icon: '🆘',
+      target_sheet: 'MEMBERS',
+      visibility: 'member',
+      sort_order: 0.5,
+      enabled: true,
+      editable_in_admin: false
+    };
+    return { card: syntheticCard, rows: getEmergencyMemberInfoRows_(safe), meta:{} };
+  }
+
+  if (cardId === 'route_map') {
+    const syntheticCard = {
+      card_id: 'route_map',
+      title: '行程路線圖',
+      description: '在地圖上標示行程各站地點及日期',
+      icon: '🗺️',
+      target_sheet: 'route_map_locations',
+      visibility: 'public',
+      sort_order: 1.5,
+      enabled: true,
+      editable_in_admin: false
+    };
+    const rows = getRows_('route_map_locations');
+    return { card: syntheticCard, rows, meta:{} };
+  }
+
   const card = getRows_('CARDS').find(r => norm_(r.card_id) === norm_(cardId));
   if (!card) throw new Error('Card not found');
   if (!visibleFor_(card, safe)) throw new Error('Permission denied');
@@ -103,7 +173,6 @@ function getCardData_(session, cardId) {
   if (cardId === 'weather') return { card, rows: fetchWeather_(), meta:{} };
   if (cardId === 'exchange_rates') return { card, rows: fetchRates_(), meta:{} };
   if (cardId === 'emergency_contacts') return { card, rows: getEmergencyContactsFor_(safe), meta:{} };
-  if (cardId === 'emergency_member_info') return { card, rows: getEmergencyMemberInfoRows_(safe), meta:{} };
   if (cardId === 'members_all') requireRole_(safe, 'leader');
 
   return { card, rows: getRows_(card.target_sheet), meta:{} };
@@ -311,4 +380,47 @@ function fetchRates_() {
     cache[base] = JSON.parse(UrlFetchApp.fetch('https://open.er-api.com/v6/latest/' + encodeURIComponent(base), { muteHttpExceptions:true }).getContentText());
   });
   return pairs.map(p => ({ pair:p.pair, rate:cache[p.base] && cache[p.base].rates ? cache[p.base].rates[p.target] : null, updated_at:cache[p.base] && cache[p.base].time_last_update_utc }));
+}
+
+function ensureSheetHeaders_(name, headers) {
+  const ss = ss_();
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.appendRow(headers);
+    return sh;
+  }
+  const first = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), headers.length)).getValues()[0].map(v => String(v || '').trim());
+  let changed = false;
+  headers.forEach((h, i) => {
+    if (first[i] !== h) { sh.getRange(1, i + 1).setValue(h); changed = true; }
+  });
+  return sh;
+}
+
+function appendLatestUpdates() {
+  // 確保 route_map_locations 工作表存在（行程路線圖用）
+  ensureSheetHeaders_('route_map_locations', [
+    'sort_order', 'date', 'location_name', 'lat', 'lng', 'note', 'icon'
+  ]);
+
+  // 預填已知的行程地點（如已有資料則不覆寫）
+  const sh = ss_().getSheetByName('route_map_locations');
+  if (sh.getLastRow() <= 1) {
+    const seed = [
+      [1, '11/7', '香港國際機場', 22.3080, 113.9185, '出發', '✈️'],
+      [2, '11/7', '峇里島沙努爾皇宮大酒店', -8.6921, 115.2626, '抵達入住', '🏨'],
+      [3, '12/7', '峇里島（本地遊）', -8.65, 115.22, '本地遊（待補座標）', '🌴'],
+      [4, '13/7', '峇里島（潛水）', -8.72, 115.20, '潛水活動', '🤿'],
+      [5, '14/7', '峇里 → 雅加達', -6.2088, 106.8456, '內陸機轉飛', '✈️'],
+      [6, '14/7', 'Aryaduta Menteng 酒店', -6.1980, 106.8430, '入住', '🏨'],
+      [7, '15/7', '雅加達（本地遊）', -6.20, 106.85, '本地遊（待補座標）', '🌴'],
+      [8, '18/7', '雅加達 → 泗水', -7.2575, 112.7521, '內陸機轉飛', '✈️'],
+      [9, '18/7', '泗水（登山）', -7.94, 112.95, '登山活動', '⛰️'],
+      [10, '20/7', '雅加達 → 香港', 22.3080, 113.9185, '回程解散', '✈️']
+    ];
+    seed.forEach(row => sh.appendRow(row));
+  }
+
+  return { message: '已確保 route_map_locations 工作表存在並預填基本地點。' };
 }

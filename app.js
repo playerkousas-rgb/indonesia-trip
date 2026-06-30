@@ -138,7 +138,7 @@ async function openCard(cardId, shouldScroll = false) {
   }
 }
 
-function afterRenderCard(cardId) { if (cardId === 'packing') bindPackingTabs(); if (cardId === 'members_all') bindMemberTabs(); if (cardId === 'hotels') bindHotelTabs(); }
+function afterRenderCard(cardId) { if (cardId === 'packing') bindPackingTabs(); if (cardId === 'members_all') bindMemberTabs(); if (cardId === 'hotels') bindHotelTabs(); if (cardId === 'route_map') initRouteMap(); }
 
 function renderProfile(p) { if (!p) return '<div class="small">沒有資料</div>'; return `<div class="list-item"><strong>${p.chinese_name || ''} ${p.english_name ? ' / ' + p.english_name : ''}</strong><div class="meta"><span class="chip">${p.role_type || ''}</span><span class="chip">${p.scout_role || ''}</span></div><div class="table-wrap"><table class="table" style="margin-top:10px"><tr><td>電話</td><td>${p.phone || '-'}</td></tr><tr><td>Email</td><td>${p.email || '-'}</td></tr><tr><td>緊急聯絡人</td><td>${p.parent_name || '-'} ${p.parent_relation ? '（' + p.parent_relation + '）' : ''}</td></tr><tr><td>緊急聯絡電話</td><td>${p.parent_phone || '-'}</td></tr><tr><td>護照號碼</td><td>${p.passport_no || '-'}</td></tr><tr><td>護照到期日</td><td>${formatDisplayDate(p.passport_expiry) || '-'}</td></tr><tr><td>健康備註</td><td>${p.medical_notes || '-'}</td></tr></table></div><div style="margin-top:12px"><button class="btn btn-primary" onclick="changeMyPassword()">修改密碼</button></div></div>`; }
 
@@ -153,6 +153,7 @@ function renderCardData(cardId, rows) {
   if (cardId === 'hotels') return renderHotels(rows);
   if (cardId === 'transport_info') return renderTransport(rows);
   if (cardId === 'team_rules') return renderRules(rows);
+  if (cardId === 'route_map') return renderRouteMap(rows);
   if (['restaurants','souvenirs','attractions','marine_life','phrases','apps'].includes(cardId)) return renderGroupedByCity(rows, cardId);
   return renderGenericTable(rows);
 }
@@ -186,6 +187,56 @@ function renderTransport(rows) { return `<div class="list">${rows.map(r => `<div
 function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)).map(r => `<div class="list-item"><div>${formatCell(r.rule)}</div></div>`).join('')}</div>`; }
 
 function formatCell(v) { if (v == null || v === '') return '-'; if (typeof v === 'string' && /^https?:\/\//.test(v)) return `<a class="link" href="${v}" target="_blank">開啟連結</a>`; return String(v).replace(/\n/g, '<br>'); }
+
+/* ── 行程路線圖 ── */
+let _routeMapRows = [];
+function renderRouteMap(rows) {
+  _routeMapRows = rows || [];
+  if (!_routeMapRows.length) return '<div class="small">暫無路線資料。請先在 Apps Script 執行 appendLatestUpdates 建立工作表。</div>';
+  const sorted = [..._routeMapRows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0));
+  const listHtml = sorted.map(r => `<div class="list-item" style="padding:10px"><strong>${r.icon || '📍'} ${formatCell(r.date)}</strong><div class="small" style="margin-top:4px">${formatCell(r.location_name)}</div>${r.note ? `<div class="small">${formatCell(r.note)}</div>`:''}</div>`).join('');
+  return `<div id="routeMap"></div><div class="list" style="margin-top:14px">${listHtml}</div>`;
+}
+function initRouteMap() {
+  if (typeof L === 'undefined') return;
+  const rows = _routeMapRows;
+  if (!rows.length) return;
+  const sorted = [...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0));
+  const mapEl = document.getElementById('routeMap');
+  if (!mapEl) return;
+
+  const map = L.map(mapEl).setView([-7.0, 112.0], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 18
+  }).addTo(map);
+
+  const markers = [];
+  sorted.forEach(r => {
+    const lat = parseFloat(r.lat);
+    const lng = parseFloat(r.lng);
+    if (isNaN(lat) || isNaN(lng)) return;
+    const customIcon = L.divIcon({
+      className: '',
+      html: `<div style="font-size:24px;text-shadow:1px 1px 2px rgba(0,0,0,.4)">${r.icon || '📍'}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 24]
+    });
+    const marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
+    marker.bindPopup(`<strong>${r.icon || ''} ${r.date || ''}</strong><br>${r.location_name || ''}${r.note ? '<br><small>' + r.note + '</small>' : ''}`);
+    markers.push(marker);
+  });
+
+  // 畫路線
+  if (markers.length >= 2) {
+    const latlngs = markers.map(m => m.getLatLng());
+    L.polyline(latlngs, { color: '#0f766e', weight: 3, opacity: 0.7, dashArray: '8 6' }).addTo(map);
+  }
+
+  if (markers.length) {
+    map.fitBounds(L.featureGroup(markers).getBounds().pad(0.15));
+  }
+}
 function formatCellByKey(key, value) { if (value == null || value === '') return '-'; const k = String(key || '').toLowerCase(); if (k.includes('date') || k.includes('expiry')) return formatDisplayDate(value); if (k === 'updated_at' || k === 'time' || k.includes('sunrise') || k.includes('sunset')) return formatDateTime(value); return formatCell(value); }
 function formatDateTime(v) { if (v == null || v === '') return '-'; const s = String(v).trim(); if (/^\d{4}-\d{2}-\d{2}t/i.test(s) || /^\d{4}-\d{2}-\d{2}/.test(s)) { const d = new Date(s); if (!isNaN(d)) return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } return s; }
 function formatTimeOnly(v) { if (v == null || v === '') return '-'; const d = new Date(String(v).trim()); if (!isNaN(d)) return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; const m = String(v).match(/(\d{2}:\d{2})/); return m ? m[1] : String(v); }
