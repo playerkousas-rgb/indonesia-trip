@@ -20,13 +20,20 @@ async function api(action, payload = {}) {
   if (!data.ok) throw new Error(data.error || 'API Error');
   return data;
 }
+
 async function bootstrap() {
   try {
     const data = await api('getBootstrap', { session: state.session });
-    state.bootstrap = data.bootstrap; state.cards = data.cards || [];
-    renderShell(); renderCards();
-  } catch (err) { console.error(err); setStatus('未能讀取資料，請稍後再試。'); }
+    state.bootstrap = data.bootstrap;
+    state.cards = data.cards || [];
+    renderShell();
+    renderCards();
+  } catch (err) {
+    console.error(err);
+    setStatus('未能讀取資料，請稍後再試。');
+  }
 }
+
 function setStatus(text) { document.getElementById('statusBar').textContent = text || ''; }
 
 function renderShell() {
@@ -43,46 +50,99 @@ function renderShell() {
   document.getElementById('adminBtn').classList.toggle('hidden', !can('superadmin'));
   if (state.session) setStatus(`已登入：${state.session.display_name}（${state.session.role}）`);
   renderHeroSummary();
+  renderHeroEmergencyCard();
 }
+
 async function renderHeroSummary() {
   try {
-    const [rateData, weatherData] = await Promise.all([api('getCardData', { session: state.session, cardId: 'exchange_rates' }), api('getCardData', { session: state.session, cardId: 'weather' })]);
+    const [rateData, weatherData] = await Promise.all([
+      api('getCardData', { session: state.session, cardId: 'exchange_rates' }),
+      api('getCardData', { session: state.session, cardId: 'weather' })
+    ]);
     const rates = (rateData.rows || []).slice(0, 3).map(r => `${r.pair}: ${r.rate ?? '-'}`).join(' ｜ ');
     const weather = (weatherData.rows || []).slice(0, 3).map(r => `${r.city} ${r.current_temp ?? '-'}°C`).join(' ｜ ');
     document.getElementById('heroSummary').innerHTML = `<div class="summary-box"><strong>即時摘要</strong><div class="small" style="margin-top:6px">匯率：${rates}</div><div class="small" style="margin-top:4px">天氣：${weather}</div></div>`;
-  } catch { document.getElementById('heroSummary').innerHTML = `<div class="summary-box"><strong>即時摘要</strong><div class="small" style="margin-top:6px">暫時未能讀取即時資料</div></div>`; }
+  } catch {
+    document.getElementById('heroSummary').innerHTML = `<div class="summary-box"><strong>即時摘要</strong><div class="small" style="margin-top:6px">暫時未能讀取即時資料</div></div>`;
+  }
 }
 
-function formatDisplayDate(v) { if (v == null || v === '') return '-'; const s = String(v).trim(); const d = new Date(s); if (!isNaN(d) && /^\d{4}-\d{2}-\d{2}/.test(s)) return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; return s; }
+async function renderHeroEmergencyCard() {
+  const box = document.getElementById('heroEmergencyCard');
+  if (!can('member')) {
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    return;
+  }
+  box.classList.remove('hidden');
+  box.innerHTML = `<strong>個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">點擊展開查看</div>`;
+  box.onclick = () => openCard('emergency_member_info', false);
+}
+
+function formatDisplayDate(v) {
+  if (v == null || v === '') return '-';
+  const s = String(v).trim();
+  const d = new Date(s);
+  if (!isNaN(d) && /^\d{4}-\d{2}-\d{2}/.test(s)) return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  return s;
+}
 function formatDateRange(start, end) { if (!start || !end) return '2026/7/11 → 2026/7/20'; return `${formatDisplayDate(start)} → ${formatDisplayDate(end)}`; }
 
 function renderCards() {
-  const box = document.getElementById('cards'); box.innerHTML = '';
+  const box = document.getElementById('cards');
+  box.innerHTML = '';
   state.cards.forEach(card => {
-    const el = document.createElement('div'); el.className = 'card'; el.id = `card-${card.card_id}`;
-    el.innerHTML = `<div class="card-top"><div class="icon">${card.icon || '📄'}</div><div class="badge">${card.visibility || 'public'}</div></div><h3>${card.title}</h3><p>${card.description || ''}</p><div class="card-footer"><span class="small">由 Google Sheet 控制</span><button class="btn btn-light" data-card="${card.card_id}">進入</button></div><div class="inline-card-content hidden" id="inline-${card.card_id}"><div class="inline-card-head"><strong id="inline-title-${card.card_id}">${card.title}</strong></div><div class="inline-card-body small">讀取資料中...</div></div>`;
+    if (card.card_id === 'emergency_member_info') return;
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.id = `card-${card.card_id}`;
+    el.innerHTML = `<div class="card-top"><div class="icon">${card.icon || '📄'}</div><div class="badge">${card.visibility || 'public'}</div></div><h3>${card.title}</h3><p>${card.description || ''}</p><div class="card-footer"><span class="small">由 Google Sheet 控制</span><button class="btn btn-light" data-card="${card.card_id}">進入</button></div><div class="inline-card-content hidden" id="inline-${card.card_id}"><div class="inline-card-body small">讀取資料中...</div></div>`;
     box.appendChild(el);
   });
-  box.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => openCard(btn.dataset.card)));
+  box.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => openCard(btn.dataset.card, false)));
 }
 
-async function openCard(cardId) {
-  const inline = document.getElementById(`inline-${cardId}`); const inlineTitle = document.getElementById(`inline-title-${cardId}`); const inlineBody = inline?.querySelector('.inline-card-body');
+async function openCard(cardId, shouldScroll = false) {
   document.querySelectorAll('.inline-card-content').forEach(el => el.classList.add('hidden'));
-  if (inline) { inline.classList.remove('hidden'); inlineBody.innerHTML = '<div class="small">讀取資料中...</div>'; document.getElementById(`card-${cardId}`)?.scrollIntoView({ behavior:'smooth', block:'start' }); }
+
+  if (cardId === 'emergency_member_info') {
+    const heroBox = document.getElementById('heroEmergencyCard');
+    heroBox.innerHTML = '<strong>個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">讀取資料中...</div>';
+    try {
+      const data = await api('getCardData', { session: state.session, cardId });
+      heroBox.innerHTML = `<strong>個人緊急聯絡資料</strong><div style="margin-top:10px">${renderEmergencyMemberInfo(data.rows || [])}</div>`;
+    } catch (err) {
+      heroBox.innerHTML = `<strong>個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">${err.message}</div>`;
+    }
+    return;
+  }
+
+  const inline = document.getElementById(`inline-${cardId}`);
+  const inlineBody = inline?.querySelector('.inline-card-body');
+  if (inline) {
+    inline.classList.remove('hidden');
+    inlineBody.innerHTML = '<div class="small">讀取資料中...</div>';
+    if (shouldScroll) document.getElementById(`card-${cardId}`)?.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
   try {
     if (cardId === 'my_profile') {
-      const data = await api('getMyProfile', { session: state.session }); inlineTitle.textContent = '我的資料'; inlineBody.innerHTML = renderProfile(data.profile); return;
+      const data = await api('getMyProfile', { session: state.session });
+      inlineBody.innerHTML = renderProfile(data.profile);
+      return;
     }
-    const data = await api('getCardData', { session: state.session, cardId }); inlineTitle.textContent = data.card?.title || cardId; inlineBody.innerHTML = renderCardData(cardId, data.rows || [], data.meta || {}); afterRenderCard(cardId);
-  } catch (err) { inlineTitle.textContent = '讀取失敗'; inlineBody.innerHTML = `<div class="small">${err.message}</div>`; }
+    const data = await api('getCardData', { session: state.session, cardId });
+    inlineBody.innerHTML = renderCardData(cardId, data.rows || [], data.meta || {});
+    afterRenderCard(cardId);
+  } catch (err) {
+    inlineBody.innerHTML = `<div class="small">${err.message}</div>`;
+  }
 }
 
 function afterRenderCard(cardId) { if (cardId === 'packing') bindPackingTabs(); if (cardId === 'members_all') bindMemberTabs(); if (cardId === 'hotels') bindHotelTabs(); }
 
 function renderProfile(p) { if (!p) return '<div class="small">沒有資料</div>'; return `<div class="list-item"><strong>${p.chinese_name || ''} ${p.english_name ? ' / ' + p.english_name : ''}</strong><div class="meta"><span class="chip">${p.role_type || ''}</span><span class="chip">${p.scout_role || ''}</span></div><div class="table-wrap"><table class="table" style="margin-top:10px"><tr><td>電話</td><td>${p.phone || '-'}</td></tr><tr><td>Email</td><td>${p.email || '-'}</td></tr><tr><td>緊急聯絡人</td><td>${p.parent_name || '-'} ${p.parent_relation ? '（' + p.parent_relation + '）' : ''}</td></tr><tr><td>緊急聯絡電話</td><td>${p.parent_phone || '-'}</td></tr><tr><td>護照號碼</td><td>${p.passport_no || '-'}</td></tr><tr><td>護照到期日</td><td>${formatDisplayDate(p.passport_expiry) || '-'}</td></tr><tr><td>健康備註</td><td>${p.medical_notes || '-'}</td></tr></table></div><div style="margin-top:12px"><button class="btn btn-primary" onclick="changeMyPassword()">修改密碼</button></div></div>`; }
 
-function renderCardData(cardId, rows, meta) {
+function renderCardData(cardId, rows) {
   if (cardId === 'packing') return renderPackingTabbed(rows);
   if (cardId === 'weather') return renderWeather(rows);
   if (cardId === 'exchange_rates') return renderRates(rows);
@@ -104,7 +164,7 @@ function bindHotelTabs() { document.querySelectorAll('[data-hotel-tab]').forEach
 
 function renderEmergencyContacts(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.name)}</strong><div class="small" style="margin-top:6px">電話：${formatCell(r.phone)}</div>${r.whatsapp ? `<div class="small">WhatsApp：${formatCell(r.whatsapp)}</div>` : ''}${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
 function renderEmergencyActions(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${r.scenario}</strong><div class="small" style="margin-top:6px">先通知：${r.primary_contact || '-'}</div><div class="small">電話：${r.primary_phone || '-'}</div>${r.secondary_contact ? `<div class="small">後備：${r.secondary_contact} ${r.secondary_phone || ''}</div>`:''}${r.note ? `<div class="small">備註：${r.note}</div>`:''}</div>`).join('')}</div>`; }
-function renderEmergencyMemberInfo(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.display_name)}</strong>${r.member_phone ? `<div class="small" style="margin-top:6px">本人電話：${formatCell(r.member_phone)}</div>` : ''}${r.emergency_contact_name ? `<div class="small">緊急聯絡人：${formatCell(r.emergency_contact_name)}</div>` : ''}${r.emergency_contact_phone ? `<div class="small">緊急聯絡人電話：${formatCell(r.emergency_contact_phone)}</div>` : ''}${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
+function renderEmergencyMemberInfo(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.display_name)}</strong>${r.member_phone ? `<div class="small" style="margin-top:6px">電話：${formatCell(r.member_phone)}</div>` : ''}${r.emergency_contact_name ? `<div class="small">緊急聯絡人：${formatCell(r.emergency_contact_name)}</div>` : ''}${r.emergency_contact_phone ? `<div class="small">緊急聯絡人電話：${formatCell(r.emergency_contact_phone)}</div>` : ''}${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
 
 function renderGroupedByCity(rows, cardId) {
   if (!rows.length) return '<div class="small">暫無資料</div>';
@@ -167,8 +227,8 @@ function bindStatic() {
   document.getElementById('closeLoginBtn').addEventListener('click', () => document.getElementById('loginModal').classList.remove('open'));
   document.getElementById('submitLoginBtn').addEventListener('click', login);
   document.getElementById('logoutBtn').addEventListener('click', async () => { clearSession(); await bootstrap(); document.querySelectorAll('.inline-card-content').forEach(el => el.classList.add('hidden')); document.getElementById('adminSection').classList.add('hidden'); });
-  document.getElementById('myProfileBtn').addEventListener('click', () => openCard('my_profile'));
-  document.getElementById('leaderBtn').addEventListener('click', () => openCard('members_all'));
+  document.getElementById('myProfileBtn').addEventListener('click', () => openCard('my_profile', false));
+  document.getElementById('leaderBtn').addEventListener('click', () => openCard('members_all', false));
   document.getElementById('adminBtn').addEventListener('click', openAdmin);
   document.querySelectorAll('[data-admin-tab]').forEach(btn => btn.addEventListener('click', async () => { state.adminTab = btn.dataset.adminTab; await renderAdmin(); }));
 }
