@@ -75,7 +75,7 @@ async function renderHeroEmergencyCard() {
     return;
   }
   box.classList.remove('hidden');
-  box.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">點擊展開查看你的緊急聯絡資料、領袖聯絡及印尼緊急電話</div>`;
+  box.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px;color:var(--hero-sub)">點擊展開查看你的緊急聯絡資料、領袖聯絡及印尼緊急電話</div>`;
   box.style.cursor = 'pointer';
   box.onclick = () => openCard('emergency_member_info', false);
 }
@@ -100,6 +100,14 @@ function renderCards() {
     el.innerHTML = `<div class="card-top"><div class="icon">${card.icon || '📄'}</div><div class="badge">${card.visibility || 'public'}</div></div><h3>${card.title}</h3><p>${card.description || ''}</p><div class="card-footer"><span class="small">由 Google Sheet 控制</span><button class="btn btn-light" data-card="${card.card_id}">進入</button></div><div class="inline-card-content hidden" id="inline-${card.card_id}"><div class="inline-card-body small">讀取資料中...</div></div>`;
     box.appendChild(el);
   });
+  // 司機信息卡片（前端合成，不依賴後端 CARDS）
+  if (can('member')) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.id = 'card-driver_info';
+    el.innerHTML = `<div class="card-top"><div class="icon">🚕</div><div class="badge">member</div></div><h3>司機信息 Driver Info</h3><p>給的士司機看的酒店及機場地址（英文 / 印尼文）</p><div class="card-footer"><span class="small">離線可用</span><button class="btn btn-light" data-card="driver_info">進入</button></div><div class="inline-card-content hidden" id="inline-driver_info"><div class="inline-card-body small">讀取資料中...</div></div>`;
+    box.appendChild(el);
+  }
   box.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => openCard(btn.dataset.card, false)));
 }
 
@@ -109,18 +117,44 @@ async function openCard(cardId, shouldScroll = false) {
   if (cardId === 'emergency_member_info') {
     const heroBox = document.getElementById('heroEmergencyCard');
     heroBox.innerHTML = '<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">讀取資料中...</div>';
+    heroBox.style.background = 'rgba(255,255,255,.14)';
+    heroBox.style.color = '#fff';
     try {
       const data = await api('getCardData', { session: state.session, cardId });
-      heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div style="margin-top:10px">${renderEmergencyMemberInfo(data.rows || [])}</div>`;
+      // 展開後切換為白底深色文字
+      heroBox.style.background = '#fff';
+      heroBox.style.color = '#0f172a';
+      heroBox.style.border = '1px solid #dbe3ee';
+      heroBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#0f172a">🆘 個人緊急聯絡資料</strong><button class="btn btn-light" style="font-size:12px;padding:6px 10px" onclick="closeHeroEmergency()">收合</button></div><div style="margin-top:10px">${renderEmergencyMemberInfo(data.rows || [])}</div>`;
     } catch (err) {
-      // 後端尚未更新時的容錯備用方案：從其他 API 組合資料
       console.warn('emergency_member_info API 失敗，使用備用方案:', err.message);
       try {
         const rows = await buildEmergencyMemberInfoFallback();
-        heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div style="margin-top:10px">${renderEmergencyMemberInfo(rows)}</div>`;
+        heroBox.style.background = '#fff';
+        heroBox.style.color = '#0f172a';
+        heroBox.style.border = '1px solid #dbe3ee';
+        heroBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#0f172a">🆘 個人緊急聯絡資料</strong><button class="btn btn-light" style="font-size:12px;padding:6px 10px" onclick="closeHeroEmergency()">收合</button></div><div style="margin-top:10px">${renderEmergencyMemberInfo(rows)}</div>`;
       } catch (err2) {
-        heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">載入失敗：${err2.message}<br>請確認後端 Code.gs 已更新部署。</div>`;
+        heroBox.style.background = 'rgba(255,255,255,.14)';
+        heroBox.style.color = '#fff';
+        heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">載入失敗：${err2.message}</div>`;
       }
+    }
+    return;
+  }
+
+  if (cardId === 'driver_info') {
+    const inline = document.getElementById('inline-driver_info');
+    const inlineBody = inline?.querySelector('.inline-card-body');
+    if (inline) {
+      inline.classList.remove('hidden');
+      inlineBody.innerHTML = '<div class="small">讀取資料中...</div>';
+    }
+    try {
+      const hData = await api('getCardData', { session: state.session, cardId: 'hotels' });
+      inlineBody.innerHTML = renderDriverInfo(hData.rows || []);
+    } catch {
+      inlineBody.innerHTML = renderDriverInfo([]);
     }
     return;
   }
@@ -188,6 +222,16 @@ function bindPackingTabs() { document.querySelectorAll('[data-pack]').forEach(cb
 function clearPacking() { localStorage.removeItem(`packingChecklistDraft:${state.session?.username || 'public'}`); openCard('packing'); }
 window.clearPacking = clearPacking;
 
+function closeHeroEmergency() {
+  const heroBox = document.getElementById('heroEmergencyCard');
+  heroBox.style.background = 'rgba(255,255,255,.14)';
+  heroBox.style.color = '#fff';
+  heroBox.style.border = '1px solid rgba(255,255,255,.2)';
+  heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px;color:var(--hero-sub)">點擊展開查看你的緊急聯絡資料、領袖聯絡及印尼緊急電話</div>`;
+  heroBox.onclick = () => openCard('emergency_member_info', false);
+}
+window.closeHeroEmergency = closeHeroEmergency;
+
 function renderWeather(rows) { return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${r.city}</strong><div class="small" style="margin-top:6px">現時：${r.current_temp ?? '-'}°C｜體感：${r.apparent_temp ?? '-'}°C｜風速：${r.wind_speed ?? '-'} km/h</div><div class="small">今日：${r.temp_min ?? '-'}°C - ${r.temp_max ?? '-'}°C｜降雨：${r.precipitation ?? 0} mm</div><div class="small">明日：${r.tomorrow_min ?? '-'}°C - ${r.tomorrow_max ?? '-'}°C</div><div class="small">日出：${formatTimeOnly(r.sunrise)}｜日落：${formatTimeOnly(r.sunset)}</div>${r.sea_temp !== '' && r.sea_temp != null ? `<div class="small">海水溫度：${r.sea_temp}°C</div>` : ''}<div class="small">更新：${formatDateTime(r.time)}</div></div>`).join('')}<div class="list-item color-blue"><strong>資料來源</strong><div class="small">Open-Meteo forecast API；海水溫度只顯示峇里。</div></div></div>`; }
 function renderRates(rows) { return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${r.pair}</strong><div style="margin-top:6px">${r.rate}</div><div class="small">更新：${formatCellByKey('updated_at', r.updated_at)}</div></div>`).join('')}</div>`; }
 function renderHotels(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; const grouped = {}; rows.forEach(r => { const key = [r.location || '', r.hotel_name || '', r.address || ''].join('|'); if (!grouped[key]) grouped[key] = { ...r, dates: [] }; if (r.date) grouped[key].dates.push(r.date); }); const list = Object.values(grouped); const tabs = list.map((r, i) => `<button class="btn btn-light hotel-tab ${i===0?'active':''}" data-hotel-tab="${i}">${r.location || r.hotel_name || '酒店'}</button>`).join(''); const panels = list.map((r, i) => `<div class="hotel-panel ${i===0?'':'hidden'}" data-hotel-panel="${i}"><div class="list-item"><strong>${formatCell(r.hotel_name)}</strong><div class="small" style="margin-top:6px">日期：${r.dates.map(d => formatCellByKey('date', d)).join('、')}</div><div class="small">地點：${formatCell(r.location)}</div>${r.address ? `<div class="small">地址：${formatCell(r.address)}</div>` : ''}${r.phone ? `<div class="small">電話：${formatCell(r.phone)}</div>` : ''}${r.booking_id ? `<div class="small">預訂 / 確認編號：${formatCell(r.booking_id)}</div>` : ''}${r.order_id ? `<div class="small">訂單編號：${formatCell(r.order_id)}</div>` : ''}${r.pin_code ? `<div class="small">PIN 碼：${formatCell(r.pin_code)}</div>` : ''}${r.map_url ? `<div class="small">地圖：${formatCell(r.map_url)}</div>` : ''}${r.transport_note ? `<div class="small">交通：${formatCell(r.transport_note)}</div>` : ''}</div></div>`).join(''); return `<div class="nav-tabs">${tabs}</div><div style="margin-top:14px">${panels}</div>`; }
@@ -195,6 +239,68 @@ function renderTransport(rows) { return `<div class="list">${rows.map(r => `<div
 function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)).map(r => `<div class="list-item"><div>${formatCell(r.rule)}</div></div>`).join('')}</div>`; }
 
 function formatCell(v) { if (v == null || v === '') return '-'; if (typeof v === 'string' && /^https?:\/\//.test(v)) return `<a class="link" href="${v}" target="_blank">開啟連結</a>`; return String(v).replace(/\n/g, '<br>'); }
+
+/* ── 司機信息 ── */
+function renderDriverInfo(hotelRows) {
+  // 從 hotels API 取得酒店資料，再補上機場固定資料
+  const hotels = {};
+  hotelRows.forEach(r => {
+    const key = (r.location || '') + '|' + (r.hotel_name || '');
+    if (!hotels[key]) hotels[key] = { ...r };
+  });
+  const hotelList = Object.values(hotels);
+
+  // 機場固定資料
+  const airports = [
+    { name_en: 'Soekarno-Hatta International Airport', name_id: 'Bandara Soekarno-Hatta', address: 'Tangerang, Banten 15126, Indonesia', code: 'CGK' },
+    { name_en: 'Ngurah Rai International Airport (Bali)', name_id: 'Bandara Ngurah Rai (Bali)', address: 'Jl. Airport Ngurah Rai, Tuban, Kuta, Badung, Bali 80362, Indonesia', code: 'DPS' }
+  ];
+
+  // 常用句子
+  const phrases = [
+    { en: 'Please take me to this hotel.', id: 'Tolong antar saya ke hotel ini.' },
+    { en: 'Please take me to the airport.', id: 'Tolong antar saya ke bandara.' },
+    { en: 'How much?', id: 'Berapa harganya?' },
+    { en: 'Please use the meter.', id: 'Tolong pakai argo.' },
+    { en: 'Thank you.', id: 'Terima kasih.' }
+  ];
+
+  let html = '';
+
+  // 酒店地址
+  hotelList.forEach(h => {
+    html += `<div class="list-item" style="padding:16px;border-left:4px solid #0f766e">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">HOTEL</div>
+      <strong style="font-size:17px">${h.hotel_name || '-'}</strong>
+      ${h.location ? `<div style="margin-top:4px;font-size:15px;color:#0f766e;font-weight:700">${h.location}</div>` : ''}
+      ${h.address && h.address !== 'same address' ? `<div style="margin-top:8px;font-size:14px;line-height:1.6">${h.address}</div>` : ''}
+      ${h.phone ? `<div style="margin-top:6px;font-size:14px">📞 ${h.phone}</div>` : ''}
+    </div>`;
+  });
+
+  // 機場地址
+  airports.forEach(a => {
+    html += `<div class="list-item" style="padding:16px;border-left:4px solid #2563eb">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">AIRPORT ✈️ ${a.code}</div>
+      <strong style="font-size:17px">${a.name_en}</strong>
+      <div style="margin-top:4px;font-size:15px;color:#2563eb;font-weight:700">${a.name_id}</div>
+      <div style="margin-top:8px;font-size:14px;line-height:1.6">${a.address}</div>
+    </div>`;
+  });
+
+  // 常用句子
+  html += `<div class="list-item" style="padding:16px;border-left:4px solid #f59e0b">
+    <div style="font-size:11px;color:#64748b;margin-bottom:8px">USEFUL PHRASES</div>`;
+  phrases.forEach(p => {
+    html += `<div style="margin-bottom:10px">
+      <div style="font-size:15px;font-weight:700">${p.en}</div>
+      <div style="font-size:14px;color:#0f766e;font-weight:600">${p.id}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  return `<div>${html}</div>`;
+}
 
 /* ── 個人緊急聯絡資料：後端未更新時的容錯備用方案 ── */
 async function buildEmergencyMemberInfoFallback() {
