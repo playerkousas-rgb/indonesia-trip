@@ -116,28 +116,27 @@ async function openCard(cardId, shouldScroll = false) {
 
   if (cardId === 'emergency_member_info') {
     const heroBox = document.getElementById('heroEmergencyCard');
-    heroBox.innerHTML = '<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">讀取資料中...</div>';
-    heroBox.style.background = 'rgba(255,255,255,.14)';
-    heroBox.style.color = '#fff';
+    heroBox.innerHTML = '<strong style="color:#0f172a">🆘 個人緊急聯絡資料</strong><div style="color:#64748b;margin-top:6px;font-size:12px">讀取資料中...</div>';
+    heroBox.style.background = '#fff';
+    heroBox.style.color = '#0f172a';
+    heroBox.style.border = '1px solid #dbe3ee';
+    heroBox.classList.remove('summary-box');
+    heroBox.onclick = null;
     try {
       const data = await api('getCardData', { session: state.session, cardId });
-      // 展開後切換為白底深色文字
-      heroBox.style.background = '#fff';
-      heroBox.style.color = '#0f172a';
-      heroBox.style.border = '1px solid #dbe3ee';
-      heroBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#0f172a">🆘 個人緊急聯絡資料</strong><button class="btn btn-light" style="font-size:12px;padding:6px 10px" onclick="closeHeroEmergency()">收合</button></div><div style="margin-top:10px">${renderEmergencyMemberInfo(data.rows || [])}</div>`;
+      const rows = filterEmergencyRows(data.rows || []);
+      heroBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#0f172a">🆘 個人緊急聯絡資料</strong><button class="btn btn-light" style="font-size:12px;padding:6px 10px" onclick="closeHeroEmergency()">收合</button></div><div style="margin-top:10px;color:#0f172a">${renderEmergencyMemberInfo(rows)}</div>`;
     } catch (err) {
       console.warn('emergency_member_info API 失敗，使用備用方案:', err.message);
       try {
         const rows = await buildEmergencyMemberInfoFallback();
-        heroBox.style.background = '#fff';
-        heroBox.style.color = '#0f172a';
-        heroBox.style.border = '1px solid #dbe3ee';
-        heroBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#0f172a">🆘 個人緊急聯絡資料</strong><button class="btn btn-light" style="font-size:12px;padding:6px 10px" onclick="closeHeroEmergency()">收合</button></div><div style="margin-top:10px">${renderEmergencyMemberInfo(rows)}</div>`;
+        heroBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#0f172a">🆘 個人緊急聯絡資料</strong><button class="btn btn-light" style="font-size:12px;padding:6px 10px" onclick="closeHeroEmergency()">收合</button></div><div style="margin-top:10px;color:#0f172a">${renderEmergencyMemberInfo(rows)}</div>`;
       } catch (err2) {
+        heroBox.classList.add('summary-box');
         heroBox.style.background = 'rgba(255,255,255,.14)';
         heroBox.style.color = '#fff';
-        heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">載入失敗：${err2.message}</div>`;
+        heroBox.style.border = '1px solid rgba(255,255,255,.2)';
+        heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div style="margin-top:6px;font-size:12px;color:var(--hero-sub)">載入失敗：${err2.message}</div>`;
       }
     }
     return;
@@ -156,6 +155,7 @@ async function openCard(cardId, shouldScroll = false) {
     } catch {
       inlineBody.innerHTML = renderDriverInfo([]);
     }
+    bindDriverAccordions();
     return;
   }
 
@@ -207,7 +207,7 @@ function bindHotelTabs() { document.querySelectorAll('[data-hotel-tab]').forEach
 
 function renderEmergencyContacts(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.name)}</strong><div class="small" style="margin-top:6px">電話：${formatCell(r.phone)}</div>${r.whatsapp ? `<div class="small">WhatsApp：${formatCell(r.whatsapp)}</div>` : ''}${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
 function renderEmergencyActions(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${r.scenario}</strong><div class="small" style="margin-top:6px">先通知：${r.primary_contact || '-'}</div><div class="small">電話：${r.primary_phone || '-'}</div>${r.secondary_contact ? `<div class="small">後備：${r.secondary_contact} ${r.secondary_phone || ''}</div>`:''}${r.note ? `<div class="small">備註：${r.note}</div>`:''}</div>`).join('')}</div>`; }
-function renderEmergencyMemberInfo(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.display_name)}</strong>${r.member_phone ? `<div class="small" style="margin-top:6px">電話：${formatCell(r.member_phone)}</div>` : ''}${r.emergency_contact_name ? `<div class="small">緊急聯絡人：${formatCell(r.emergency_contact_name)}</div>` : ''}${r.emergency_contact_phone ? `<div class="small">緊急聯絡人電話：${formatCell(r.emergency_contact_phone)}</div>` : ''}${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
+function renderEmergencyMemberInfo(rows) { if (!rows.length) return '<div style="color:#64748b;font-size:13px">暫無資料</div>'; return `<div class="list">${rows.map(r => `<div class="list-item" style="color:#0f172a"><strong style="color:#0f172a">${formatCell(r.display_name)}</strong>${r.member_phone ? `<div style="margin-top:6px;font-size:13px;color:#334155">電話：${formatCell(r.member_phone)}</div>` : ''}${r.emergency_contact_name ? `<div style="font-size:13px;color:#334155">緊急聯絡人：${formatCell(r.emergency_contact_name)}</div>` : ''}${r.emergency_contact_phone ? `<div style="font-size:13px;color:#334155">緊急聯絡人電話：${formatCell(r.emergency_contact_phone)}</div>` : ''}${r.note ? `<div style="font-size:12px;color:#64748b;margin-top:4px">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
 
 function renderGroupedByCity(rows, cardId) {
   if (!rows.length) return '<div class="small">暫無資料</div>';
@@ -224,10 +224,11 @@ window.clearPacking = clearPacking;
 
 function closeHeroEmergency() {
   const heroBox = document.getElementById('heroEmergencyCard');
+  heroBox.classList.add('summary-box');
   heroBox.style.background = 'rgba(255,255,255,.14)';
   heroBox.style.color = '#fff';
   heroBox.style.border = '1px solid rgba(255,255,255,.2)';
-  heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px;color:var(--hero-sub)">點擊展開查看你的緊急聯絡資料、領袖聯絡及印尼緊急電話</div>`;
+  heroBox.innerHTML = `<strong style="color:#fff">🆘 個人緊急聯絡資料</strong><div style="margin-top:6px;font-size:12px;color:var(--hero-sub)">點擊展開查看你的緊急聯絡資料、領袖聯絡及印尼緊急電話</div>`;
   heroBox.onclick = () => openCard('emergency_member_info', false);
 }
 window.closeHeroEmergency = closeHeroEmergency;
@@ -240,9 +241,8 @@ function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(
 
 function formatCell(v) { if (v == null || v === '') return '-'; if (typeof v === 'string' && /^https?:\/\//.test(v)) return `<a class="link" href="${v}" target="_blank">開啟連結</a>`; return String(v).replace(/\n/g, '<br>'); }
 
-/* ── 司機信息 ── */
+/* ── 司機信息（可收合手風琴） ── */
 function renderDriverInfo(hotelRows) {
-  // 從 hotels API 取得酒店資料，再補上機場固定資料
   const hotels = {};
   hotelRows.forEach(r => {
     const key = (r.location || '') + '|' + (r.hotel_name || '');
@@ -250,13 +250,11 @@ function renderDriverInfo(hotelRows) {
   });
   const hotelList = Object.values(hotels);
 
-  // 機場固定資料
   const airports = [
     { name_en: 'Soekarno-Hatta International Airport', name_id: 'Bandara Soekarno-Hatta', address: 'Tangerang, Banten 15126, Indonesia', code: 'CGK' },
     { name_en: 'Ngurah Rai International Airport (Bali)', name_id: 'Bandara Ngurah Rai (Bali)', address: 'Jl. Airport Ngurah Rai, Tuban, Kuta, Badung, Bali 80362, Indonesia', code: 'DPS' }
   ];
 
-  // 常用句子
   const phrases = [
     { en: 'Please take me to this hotel.', id: 'Tolong antar saya ke hotel ini.' },
     { en: 'Please take me to the airport.', id: 'Tolong antar saya ke bandara.' },
@@ -266,40 +264,82 @@ function renderDriverInfo(hotelRows) {
   ];
 
   let html = '';
+  let idx = 0;
 
   // 酒店地址
   hotelList.forEach(h => {
-    html += `<div class="list-item" style="padding:16px;border-left:4px solid #0f766e">
-      <div style="font-size:11px;color:#64748b;margin-bottom:6px">HOTEL</div>
-      <strong style="font-size:17px">${h.hotel_name || '-'}</strong>
-      ${h.location ? `<div style="margin-top:4px;font-size:15px;color:#0f766e;font-weight:700">${h.location}</div>` : ''}
-      ${h.address && h.address !== 'same address' ? `<div style="margin-top:8px;font-size:14px;line-height:1.6">${h.address}</div>` : ''}
-      ${h.phone ? `<div style="margin-top:6px;font-size:14px">📞 ${h.phone}</div>` : ''}
+    const addr = (h.address && h.address !== 'same address') ? h.address : '';
+    html += `<div class="driver-accordion">
+      <div class="driver-accordion-head" data-da="${idx}" style="display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid #dbe3ee;border-radius:14px;cursor:pointer;background:#f0fdfa">
+        <div><strong style="font-size:15px;color:#0f766e">🏨 ${h.hotel_name || '-'}</strong>${h.location ? `<span style="margin-left:8px;font-size:13px;color:#64748b">${h.location}</span>` : ''}</div>
+        <div style="font-size:18px;color:#0f766e" data-da-icon="${idx}">▼</div>
+      </div>
+      <div class="driver-accordion-body hidden" data-da-body="${idx}" style="padding:14px;border:1px solid #dbe3ee;border-top:0;border-radius:0 0 14px 14px;margin-top:-1px">
+        ${addr ? `<div style="font-size:15px;line-height:1.7;margin-bottom:6px">${addr}</div>` : ''}
+        ${h.phone ? `<div style="font-size:15px">📞 ${h.phone}</div>` : ''}
+      </div>
     </div>`;
+    idx++;
   });
 
   // 機場地址
   airports.forEach(a => {
-    html += `<div class="list-item" style="padding:16px;border-left:4px solid #2563eb">
-      <div style="font-size:11px;color:#64748b;margin-bottom:6px">AIRPORT ✈️ ${a.code}</div>
-      <strong style="font-size:17px">${a.name_en}</strong>
-      <div style="margin-top:4px;font-size:15px;color:#2563eb;font-weight:700">${a.name_id}</div>
-      <div style="margin-top:8px;font-size:14px;line-height:1.6">${a.address}</div>
+    html += `<div class="driver-accordion">
+      <div class="driver-accordion-head" data-da="${idx}" style="display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid #dbe3ee;border-radius:14px;cursor:pointer;background:#dbeafe">
+        <div><strong style="font-size:15px;color:#2563eb">✈️ ${a.name_en} (${a.code})</strong></div>
+        <div style="font-size:18px;color:#2563eb" data-da-icon="${idx}">▼</div>
+      </div>
+      <div class="driver-accordion-body hidden" data-da-body="${idx}" style="padding:14px;border:1px solid #dbe3ee;border-top:0;border-radius:0 0 14px 14px;margin-top:-1px">
+        <div style="font-size:15px;color:#2563eb;font-weight:700">${a.name_id}</div>
+        <div style="font-size:14px;line-height:1.7;margin-top:6px">${a.address}</div>
+      </div>
     </div>`;
+    idx++;
   });
 
   // 常用句子
-  html += `<div class="list-item" style="padding:16px;border-left:4px solid #f59e0b">
-    <div style="font-size:11px;color:#64748b;margin-bottom:8px">USEFUL PHRASES</div>`;
-  phrases.forEach(p => {
-    html += `<div style="margin-bottom:10px">
-      <div style="font-size:15px;font-weight:700">${p.en}</div>
-      <div style="font-size:14px;color:#0f766e;font-weight:600">${p.id}</div>
-    </div>`;
-  });
-  html += `</div>`;
+  html += `<div class="driver-accordion">
+    <div class="driver-accordion-head" data-da="${idx}" style="display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid #dbe3ee;border-radius:14px;cursor:pointer;background:#fef3c7">
+      <div><strong style="font-size:15px;color:#b45309">💬 Useful Phrases</strong></div>
+      <div style="font-size:18px;color:#b45309" data-da-icon="${idx}">▼</div>
+    </div>
+    <div class="driver-accordion-body hidden" data-da-body="${idx}" style="padding:14px;border:1px solid #dbe3ee;border-top:0;border-radius:0 0 14px 14px;margin-top:-1px">
+      ${phrases.map(p => `<div style="margin-bottom:10px"><div style="font-size:15px;font-weight:700">${p.en}</div><div style="font-size:14px;color:#0f766e;font-weight:600">${p.id}</div></div>`).join('')}
+    </div>
+  </div>`;
 
-  return `<div>${html}</div>`;
+  return `<div style="display:grid;gap:10px">${html}</div>`;
+}
+
+function bindDriverAccordions() {
+  document.querySelectorAll('.driver-accordion-head').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = el.dataset.da;
+      const body = document.querySelector(`[data-da-body="${idx}"]`);
+      const icon = document.querySelector(`[data-da-icon="${idx}"]`);
+      if (body) {
+        body.classList.toggle('hidden');
+        if (icon) icon.textContent = body.classList.contains('hidden') ? '▼' : '▲';
+      }
+    });
+  });
+}
+
+/* ── 個人緊急聯絡資料：去重處理 ── */
+function filterEmergencyRows(rows) {
+  const isLeader = can('leader');
+  if (!isLeader) return rows; // 成員不去重，全部顯示
+
+  // 領袖/超管：用電話號碼去重（後端可能把 members_all + emergency_contacts 混在一起）
+  const seen = new Set();
+  return rows.filter(r => {
+    const phone = String(r.member_phone || '').trim();
+    const name = String(r.display_name || '').trim();
+    if (!phone || phone === '-') return true; // 沒有電話的行（如熱線）保留
+    if (seen.has(phone)) return false;
+    seen.add(phone);
+    return true;
+  });
 }
 
 /* ── 個人緊急聯絡資料：後端未更新時的容錯備用方案 ── */
@@ -307,8 +347,9 @@ async function buildEmergencyMemberInfoFallback() {
   const rows = [];
   const isLeader = can('leader');
 
-  // 1. 領袖/超管：取全部成員；普通成員：取自己
   if (isLeader) {
+    // ── 領袖/超管 ──
+    // 1. 全部成員的緊急聯絡（from members_all）
     try {
       const mData = await api('getCardData', { session: state.session, cardId: 'members_all' });
       (mData.rows || []).forEach(m => {
@@ -317,11 +358,37 @@ async function buildEmergencyMemberInfoFallback() {
           member_phone: m.phone || '',
           emergency_contact_name: m.parent_name || '',
           emergency_contact_phone: m.parent_phone || '',
-          note: m.role_type || ''
+          note: m.role_type || m.scout_role || ''
         });
       });
     } catch {}
+
+    // 2. emergency_contacts 只取 sort_order >= 4（香港支援等，不重覆隨隊領袖）
+    try {
+      const cData = await api('getCardData', { session: state.session, cardId: 'emergency_contacts' });
+      (cData.rows || []).filter(c => (+c.sort_order || 0) >= 4).forEach(c => {
+        rows.push({ display_name: c.name || '', member_phone: c.phone || '', emergency_contact_name: '', emergency_contact_phone: '', note: c.note || '' });
+      });
+    } catch {}
+
+    // 3. 印尼熱線
+    rows.push(...indonesiaHotlines());
+
+    // 4. 酒店前台
+    try {
+      const hData = await api('getCardData', { session: state.session, cardId: 'hotels' });
+      const seen = {};
+      (hData.rows || []).forEach(h => {
+        const key = (h.hotel_name || '') + '|' + (h.phone || '');
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        rows.push({ display_name: '🏨 ' + (h.hotel_name || '酒店前台'), member_phone: h.phone || '', emergency_contact_name: '', emergency_contact_phone: '', note: '酒店前台電話' });
+      });
+    } catch {}
+
   } else {
+    // ── 普通成員 ──
+    // 1. 只看自己
     try {
       const pData = await api('getMyProfile', { session: state.session });
       const p = pData.profile;
@@ -333,18 +400,26 @@ async function buildEmergencyMemberInfoFallback() {
         note: '你的個人緊急聯絡資料'
       });
     } catch {}
+
+    // 2. 全部 emergency_contacts（5位都看）
+    try {
+      const cData = await api('getCardData', { session: state.session, cardId: 'emergency_contacts' });
+      (cData.rows || []).forEach(c => {
+        rows.push({ display_name: c.name || '', member_phone: c.phone || '', emergency_contact_name: '', emergency_contact_phone: '', note: c.note || '' });
+      });
+    } catch {}
+
+    // 3. 印尼熱線
+    rows.push(...indonesiaHotlines());
+
+    // 成員不加酒店電話
   }
 
-  // 2. 領袖聯絡
-  try {
-    const cData = await api('getCardData', { session: state.session, cardId: 'emergency_contacts' });
-    (cData.rows || []).forEach(c => {
-      rows.push({ display_name: c.name || '', member_phone: c.phone || '', emergency_contact_name: '', emergency_contact_phone: '', note: c.note || '' });
-    });
-  } catch {}
+  return rows;
+}
 
-  // 3. 印尼官方緊急電話（固定值）
-  const hotlines = [
+function indonesiaHotlines() {
+  return [
     { display_name: '🇮🇩 印尼綜合緊急求助', member_phone: '112', note: '全國綜合緊急求助' },
     { display_name: '🇮🇩 印尼警察', member_phone: '110', note: '警察' },
     { display_name: '🇮🇩 印尼救護車', member_phone: '118 / 119', note: '救護車 / 醫療求助' },
@@ -352,21 +427,6 @@ async function buildEmergencyMemberInfoFallback() {
     { display_name: '🇮🇩 印尼搜救 BASARNAS', member_phone: '115', note: '搜救' },
     { display_name: '🇮🇩 印尼天災協助', member_phone: '129', note: '天災協助' }
   ];
-  rows.push(...hotlines);
-
-  // 4. 酒店前台電話
-  try {
-    const hData = await api('getCardData', { session: state.session, cardId: 'hotels' });
-    const seen = {};
-    (hData.rows || []).forEach(h => {
-      const key = (h.hotel_name || '') + '|' + (h.phone || '');
-      if (!key || seen[key]) return;
-      seen[key] = true;
-      rows.push({ display_name: '🏨 ' + (h.hotel_name || '酒店前台'), member_phone: h.phone || '', emergency_contact_name: '', emergency_contact_phone: '', note: '酒店前台電話' });
-    });
-  } catch {}
-
-  return rows;
 }
 
 /* ── 行程路線圖 ── */
