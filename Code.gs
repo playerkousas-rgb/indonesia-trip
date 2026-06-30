@@ -274,7 +274,11 @@ function getEmergencyMemberInfoRows_(safe) {
     { display_name:'🇮🇩 印尼救護車', member_phone:'118 / 119', note:'救護車 / 醫療求助' },
     { display_name:'🇮🇩 印尼消防', member_phone:'113', note:'消防' },
     { display_name:'🇮🇩 印尼搜救 BASARNAS', member_phone:'115', note:'搜救' },
-    { display_name:'🇮🇩 印尼天災協助', member_phone:'129', note:'天災協助' }
+    { display_name:'🇮🇩 印尼天災協助', member_phone:'129', note:'天災協助' },
+    { display_name:'🇨🇳 中國駐印尼大使館（雅加達）', member_phone:'+62-21-5764135', note:'領事保護熱線；地址：Jl. Mega Kuningan No.2, Jakarta Selatan 12950' },
+    { display_name:'🇨🇳 中國駐登巴薩總領事館（峇里）', member_phone:'+62-361-239902', note:'領事保護熱線；地址：Jl. Tukad Badung 8X, Renon, Denpasar, Bali 80226' },
+    { display_name:'🇨🇳 中國駐泗水總領事館', member_phone:'+62-31-5678284', note:'領事保護熱線（登山活動區域）' },
+    { display_name:'🇨🇳 外交部全球領事保護應急熱線', member_phone:'+86-10-12308', note:'24小時；或 +86-10-65612308' }
   ];
 
   // ── 領袖/超管 ──

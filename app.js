@@ -196,6 +196,7 @@ function renderCardData(cardId, rows) {
   if (cardId === 'transport_info') return renderTransport(rows);
   if (cardId === 'team_rules') return renderRules(rows);
   if (cardId === 'route_map') return renderRouteMap(rows);
+  if (cardId === 'flights') return renderFlights(rows);
   if (['restaurants','souvenirs','attractions','marine_life','phrases','apps'].includes(cardId)) return renderGroupedByCity(rows, cardId);
   return renderGenericTable(rows);
 }
@@ -238,6 +239,51 @@ function renderRates(rows) { return `<div class="list">${rows.map(r => `<div cla
 function renderHotels(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; const grouped = {}; rows.forEach(r => { const key = [r.location || '', r.hotel_name || '', r.address || ''].join('|'); if (!grouped[key]) grouped[key] = { ...r, dates: [] }; if (r.date) grouped[key].dates.push(r.date); }); const list = Object.values(grouped); const tabs = list.map((r, i) => `<button class="btn btn-light hotel-tab ${i===0?'active':''}" data-hotel-tab="${i}">${r.location || r.hotel_name || '酒店'}</button>`).join(''); const panels = list.map((r, i) => `<div class="hotel-panel ${i===0?'':'hidden'}" data-hotel-panel="${i}"><div class="list-item"><strong>${formatCell(r.hotel_name)}</strong><div class="small" style="margin-top:6px">日期：${r.dates.map(d => formatCellByKey('date', d)).join('、')}</div><div class="small">地點：${formatCell(r.location)}</div>${r.address ? `<div class="small">地址：${formatCell(r.address)}</div>` : ''}${r.phone ? `<div class="small">電話：${formatCell(r.phone)}</div>` : ''}${r.booking_id ? `<div class="small">預訂 / 確認編號：${formatCell(r.booking_id)}</div>` : ''}${r.order_id ? `<div class="small">訂單編號：${formatCell(r.order_id)}</div>` : ''}${r.pin_code ? `<div class="small">PIN 碼：${formatCell(r.pin_code)}</div>` : ''}${r.map_url ? `<div class="small">地圖：${formatCell(r.map_url)}</div>` : ''}${r.transport_note ? `<div class="small">交通：${formatCell(r.transport_note)}</div>` : ''}</div></div>`).join(''); return `<div class="nav-tabs">${tabs}</div><div style="margin-top:14px">${panels}</div>`; }
 function renderTransport(rows) { return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.route)}</strong><div class="small" style="margin-top:6px">由：${formatCell(r.from_place)}</div><div class="small">到：${formatCell(r.to_place)}</div><div class="small">方式：${formatCell(r.method)}</div><div class="small">車程：約 ${formatCell(r.estimated_time)}</div><div class="small">費用：約 ${formatCell(r.estimated_cost)}</div>${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
 function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)).map(r => `<div class="list-item"><div>${formatCell(r.rule)}</div></div>`).join('')}</div>`; }
+
+/* ── 航班資訊（含航空公司聯絡） ── */
+const AIRLINE_INFO = {
+  'CX': { name: '國泰航空 Cathay Pacific', phone_hk: '+852 2747 3342', phone_bali: '+62 361 936 6964', website: 'https://www.cathaypacific.com' }
+};
+
+function renderFlights(rows) {
+  if (!rows.length) return '<div style="color:#64748b;font-size:13px">暫無航班資料</div>';
+  // 航班列表
+  let html = `<div class="list">${rows.map(r => {
+    const airlineCode = (r.airline_code || r.flight_number || '').replace(/[0-9]/g, '').toUpperCase().substring(0, 2);
+    const info = AIRLINE_INFO[airlineCode];
+    let airlineHtml = '';
+    if (info) {
+      airlineHtml = `<div style="margin-top:8px;padding:8px 10px;background:#f0fdfa;border-radius:10px;border:1px solid #ccfbf1">
+        <div style="font-size:13px;font-weight:700;color:#0f766e">${info.name}</div>
+        ${info.phone_hk ? `<div style="font-size:12px;margin-top:4px">香港：${info.phone_hk}</div>` : ''}
+        ${info.phone_bali ? `<div style="font-size:12px">峇里：${info.phone_bali}</div>` : ''}
+        ${info.phone_jkt ? `<div style="font-size:12px">雅加達：${info.phone_jkt}</div>` : ''}
+        ${info.phone_idn ? `<div style="font-size:12px">印尼：${info.phone_idn}</div>` : ''}
+        ${info.whatsapp ? `<div style="font-size:12px">WhatsApp：${info.whatsapp}</div>` : ''}
+        ${info.website ? `<div style="font-size:12px;margin-top:4px"><a href="${info.website}" target="_blank" class="link">${info.website}</a></div>` : ''}
+      </div>`;
+    }
+    const headers = Object.keys(r);
+    const detailHtml = headers.filter(h => h !== 'airline_code').map(h => `<div style="margin-top:4px;font-size:13px;color:#334155"><strong>${labelize(h)}：</strong>${formatCellByKey(h, r[h])}</div>`).join('');
+    const title = r.flight_number || r.route || r.airline || '航班';
+    return `<div class="list-item"><strong style="color:#0f172a">${title}</strong>${detailHtml}${airlineHtml}</div>`;
+  }).join('')}</div>`;
+
+  // 航班延誤/意外處理提示
+  html += `<div class="list-item" style="border-left:4px solid #f59e0b;margin-top:10px">
+    <strong style="color:#b45309">⚠️ 航班延誤或意外處理</strong>
+    <div style="margin-top:8px;font-size:13px;color:#334155;line-height:1.7">
+      1. 立即通知領隊，由領隊統一處理<br>
+      2. 向航空公司櫃台查詢，保留登機證及行李票<br>
+      3. 如需改簽，可致電航空公司客服（見上方）<br>
+      4. 延誤超過 2 小時可要求航空公司提供餐飲<br>
+      5. 如航班取消，可要求退款或改簽下一班<br>
+      6. 家長可致電香港支援（袁可秀女士：90340099）
+    </div>
+  </div>`;
+
+  return html;
+}
 
 function formatCell(v) { if (v == null || v === '') return '-'; if (typeof v === 'string' && /^https?:\/\//.test(v)) return `<a class="link" href="${v}" target="_blank">開啟連結</a>`; return String(v).replace(/\n/g, '<br>'); }
 
@@ -425,7 +471,11 @@ function indonesiaHotlines() {
     { display_name: '🇮🇩 印尼救護車', member_phone: '118 / 119', note: '救護車 / 醫療求助' },
     { display_name: '🇮🇩 印尼消防', member_phone: '113', note: '消防' },
     { display_name: '🇮🇩 印尼搜救 BASARNAS', member_phone: '115', note: '搜救' },
-    { display_name: '🇮🇩 印尼天災協助', member_phone: '129', note: '天災協助' }
+    { display_name: '🇮🇩 印尼天災協助', member_phone: '129', note: '天災協助' },
+    { display_name: '🇨🇳 中國駐印尼大使館（雅加達）', member_phone: '+62-21-5764135', note: '領事保護熱線；地址：Jl. Mega Kuningan No.2, Jakarta Selatan 12950' },
+    { display_name: '🇨🇳 中國駐登巴薩總領事館（峇里）', member_phone: '+62-361-239902', note: '領事保護熱線；地址：Jl. Tukad Badung 8X, Renon, Denpasar, Bali 80226' },
+    { display_name: '🇨🇳 中國駐泗水總領事館', member_phone: '+62-31-5678284', note: '領事保護熱線（登山活動區域）' },
+    { display_name: '🇨🇳 外交部全球領事保護應急熱線', member_phone: '+86-10-12308', note: '24小時；或 +86-10-65612308' }
   ];
 }
 
