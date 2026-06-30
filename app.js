@@ -242,40 +242,92 @@ function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(
 
 /* ── 航班資訊（含航空公司聯絡） ── */
 const AIRLINE_INFO = {
-  'CX': { name: '國泰航空 Cathay Pacific', phone_hk: '+852 2747 3342', phone_bali: '+62 361 936 6964', website: 'https://www.cathaypacific.com' }
+  'CX': { name: '國泰航空 Cathay Pacific', phone_hk: '+852 2747 3342', phone_bali: '+62 361 936 6964', phone_jkt: '+62 21 2903 4033', website: 'https://www.cathaypacific.com' }
 };
 
-function renderFlights(rows) {
-  if (!rows.length) return '<div style="color:#64748b;font-size:13px">暫無航班資料</div>';
-  // 航班列表
-  let html = `<div class="list">${rows.map(r => {
-    const airlineCode = (r.airline_code || r.flight_number || '').replace(/[0-9]/g, '').toUpperCase().substring(0, 2);
-    const info = AIRLINE_INFO[airlineCode];
-    let airlineHtml = '';
-    if (info) {
-      airlineHtml = `<div style="margin-top:8px;padding:8px 10px;background:#f0fdfa;border-radius:10px;border:1px solid #ccfbf1">
-        <div style="font-size:13px;font-weight:700;color:#0f766e">${info.name}</div>
-        ${info.phone_hk ? `<div style="font-size:12px;margin-top:4px">香港：${info.phone_hk}</div>` : ''}
-        ${info.phone_bali ? `<div style="font-size:12px">峇里：${info.phone_bali}</div>` : ''}
-        ${info.phone_jkt ? `<div style="font-size:12px">雅加達：${info.phone_jkt}</div>` : ''}
-        ${info.phone_idn ? `<div style="font-size:12px">印尼：${info.phone_idn}</div>` : ''}
-        ${info.whatsapp ? `<div style="font-size:12px">WhatsApp：${info.whatsapp}</div>` : ''}
-        ${info.website ? `<div style="font-size:12px;margin-top:4px"><a href="${info.website}" target="_blank" class="link">${info.website}</a></div>` : ''}
-      </div>`;
-    }
-    const headers = Object.keys(r);
-    const detailHtml = headers.filter(h => h !== 'airline_code').map(h => `<div style="margin-top:4px;font-size:13px;color:#334155"><strong>${labelize(h)}：</strong>${formatCellByKey(h, r[h])}</div>`).join('');
-    const title = r.flight_number || r.route || r.airline || '航班';
-    return `<div class="list-item"><strong style="color:#0f172a">${title}</strong>${detailHtml}${airlineHtml}</div>`;
-  }).join('')}</div>`;
+/* ── 機票資料（從 PDF 提取） ── */
+const FLIGHT_TICKETS = {
+  'M001': { name_en: 'Cheng Lok Yin', ticket: '160 2130847792', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
+  'M002': { name_en: 'Kok Chun', ticket: '160 2130847795', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
+  'M003': { name_en: 'Ho Yee Tak', ticket: '160 2130847794', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
+  'M004': { name_en: 'Ng Wing Hei', ticket: '160 2130847797', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
+  'L004': { name_en: 'Yeung Tsz Yan Vico', ticket: '160 2130847798', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
+  'L005': { name_en: 'Mok Wing Man', ticket: '160 2130847796', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' }
+};
 
-  // 航班延誤/意外處理提示
+const SHARED_FLIGHTS = [
+  { leg: '去程', route: '香港 HKG → 峇里 DPS', flight: 'CX785', date: '11 Jul 2026', depart: '10:00', arrive: '15:00', terminal_from: 'T1', terminal_to: 'TI', duration: '5小時' },
+  { leg: '回程', route: '雅加達 CGK → 香港 HKG', flight: 'CX776', date: '20 Jul 2026', depart: '14:20', arrive: '20:30', terminal_from: 'T3', terminal_to: 'T1', duration: '5小時10分' }
+];
+
+function renderFlights(rows) {
+  const cx = AIRLINE_INFO['CX'];
+  const isLeader = can('leader');
+  const myId = state.session?.member_id || '';
+  const myTicket = FLIGHT_TICKETS[myId];
+  let html = '';
+
+  // 國泰航空聯絡（永遠在最頂）
+  html += `<div class="list-item" style="border-left:4px solid #0f766e;margin-bottom:10px">
+    <strong style="color:#0f766e;font-size:15px">✈️ ${cx.name}</strong>
+    <div style="margin-top:6px;font-size:13px;color:#334155">香港：${cx.phone_hk}</div>
+    <div style="font-size:13px;color:#334155">峇里：${cx.phone_bali}</div>
+    <div style="font-size:13px;color:#334155">雅加達：${cx.phone_jkt}</div>
+    <div style="font-size:13px;margin-top:4px"><a href="${cx.website}" target="_blank" class="link">${cx.website}</a></div>
+  </div>`;
+
+  // 我的機票
+  if (myTicket) {
+    html += `<div class="list-item" style="border-left:4px solid #2563eb">
+      <strong style="color:#2563eb;font-size:15px">🎫 你的機票</strong>
+      <div style="margin-top:8px;font-size:13px;color:#334155">乘客：${myTicket.name_en}</div>
+      <div style="font-size:13px;color:#334155">訂單編號：${myTicket.booking_ref}</div>
+      <div style="font-size:13px;color:#334155">票號：${myTicket.ticket}</div>
+      <div style="font-size:13px;color:#334155">艙等：${myTicket.cabin}｜行李：${myTicket.baggage}</div>
+    </div>`;
+  } else if (!isLeader) {
+    html += `<div class="list-item" style="border-left:4px solid #f59e0b">
+      <strong style="color:#b45309;font-size:14px">⚠️ 你未在此訂單內</strong>
+      <div style="margin-top:6px;font-size:13px;color:#334155">你可能自行安排航班，請向領隊確認行程。</div>
+    </div>`;
+  }
+
+  // 航班詳情
+  html += `<div style="margin-top:4px;font-size:12px;color:#64748b;font-weight:700">航班詳情</div>`;
+  SHARED_FLIGHTS.forEach(f => {
+    html += `<div class="list-item">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong style="color:#0f172a">${f.leg} ${f.flight}</strong>
+        <span style="font-size:12px;color:#64748b">${f.date}</span>
+      </div>
+      <div style="margin-top:6px;font-size:14px;font-weight:700;color:#0f766e">${f.route}</div>
+      <div style="margin-top:6px;font-size:13px;color:#334155">出發 ${f.depart}（Terminal ${f.terminal_from}）→ 抵達 ${f.arrive}（Terminal ${f.terminal_to}）</div>
+      <div style="font-size:13px;color:#334155">飛行時間：${f.duration}</div>
+    </div>`;
+  });
+
+  // 領袖/超管：全部機票
+  if (isLeader) {
+    html += `<div style="margin-top:4px;font-size:12px;color:#64748b;font-weight:700">全部機票（${Object.keys(FLIGHT_TICKETS).length} 人）</div>`;
+    Object.entries(FLIGHT_TICKETS).forEach(([id, t]) => {
+      html += `<div class="list-item" style="padding:10px">
+        <strong style="color:#0f172a;font-size:14px">${id} ${t.name_en}</strong>
+        <div style="font-size:12px;color:#334155;margin-top:4px">票號：${t.ticket}｜訂單：${t.booking_ref}｜${t.cabin}｜${t.baggage}</div>
+      </div>`;
+    });
+    html += `<div class="list-item" style="padding:10px;border-left:4px solid #f59e0b">
+      <div style="font-size:13px;color:#b45309"><strong>⚠️ 以下成員自行出發，不在此訂單：</strong></div>
+      <div style="font-size:12px;color:#334155;margin-top:4px">L001 彭智豐、L002 劉嘉韻、L003 方天蔚</div>
+    </div>`;
+  }
+
+  // 航班延誤/意外處理
   html += `<div class="list-item" style="border-left:4px solid #f59e0b;margin-top:10px">
     <strong style="color:#b45309">⚠️ 航班延誤或意外處理</strong>
     <div style="margin-top:8px;font-size:13px;color:#334155;line-height:1.7">
       1. 立即通知領隊，由領隊統一處理<br>
       2. 向航空公司櫃台查詢，保留登機證及行李票<br>
-      3. 如需改簽，可致電航空公司客服（見上方）<br>
+      3. 如需改簽，致電國泰客服：香港 ${cx.phone_hk}｜峇里 ${cx.phone_bali}｜雅加達 ${cx.phone_jkt}<br>
       4. 延誤超過 2 小時可要求航空公司提供餐飲<br>
       5. 如航班取消，可要求退款或改簽下一班<br>
       6. 家長可致電香港支援（袁可秀女士：90340099）
