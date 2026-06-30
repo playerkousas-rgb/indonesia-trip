@@ -60,6 +60,7 @@ function renderShell() {
   document.getElementById('siteTag').textContent = `🌏 ${cfg.site_name || '童遊世界‧印尼活動備忘'}`;
   document.getElementById('siteTitle').textContent = cfg.site_name || '童遊世界‧印尼活動備忘';
   document.getElementById('siteDesc').textContent = '家長可直接查看活動概況；登入後按角色顯示個人、領袖及管理資料。';
+  document.getElementById('loginHint').innerHTML = '<strong>成員登入提示</strong><br>帳號 = 報名電郵｜初始密碼 = 電話號碼<br>如已更改密碼，請使用新密碼登入';
   document.getElementById('dateValue').textContent = formatDateRange(cfg.trip_start, cfg.trip_end);
   document.getElementById('showLoginBtn').classList.toggle('hidden', !!state.session);
   document.getElementById('logoutBtn').classList.toggle('hidden', !state.session);
@@ -152,6 +153,7 @@ async function openCard(cardId) {
 function afterRenderCard(cardId) {
   if (cardId === 'packing') bindPackingTabs();
   if (cardId === 'members_all') bindMemberTabs();
+  if (cardId === 'hotels') bindHotelTabs();
 }
 
 function renderProfile(p) {
@@ -182,7 +184,7 @@ function renderCardData(cardId, rows, meta) {
   if (cardId === 'hotels') return renderHotels(rows);
   if (cardId === 'transport_info') return renderTransport(rows);
   if (cardId === 'team_rules') return renderRules(rows);
-  if (['restaurants','souvenirs','attractions','marine_life','phrases','apps'].includes(cardId)) return renderGroupedByCity(rows, cardId);
+  if (['restaurants','souvenirs','attractions','marine_life','phrases','apps','emergency_contacts'].includes(cardId)) return renderGroupedByCity(rows, cardId);
   return renderGenericTable(rows);
 }
 
@@ -224,8 +226,27 @@ function bindMemberTabs() {
   }));
 }
 
+function bindHotelTabs() {
+  document.querySelectorAll('[data-hotel-tab]').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-hotel-tab]').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[data-hotel-panel]').forEach(p => p.classList.add('hidden'));
+    btn.classList.add('active');
+    const idx = btn.dataset.hotelTab;
+    document.querySelector(`[data-hotel-panel="${idx}"]`)?.classList.remove('hidden');
+  }));
+}
+
 function renderGroupedByCity(rows, cardId) {
   if (!rows.length) return '<div class="small">暫無資料</div>';
+  if (cardId === 'emergency_contacts') {
+    return `<div class="list">${rows.map(r => `
+      <div class="list-item">
+        <strong>${formatCell(r.name)}</strong>
+        <div class="small" style="margin-top:6px">電話：${formatCell(r.phone)}</div>
+        ${r.whatsapp ? `<div class="small">WhatsApp：${formatCell(r.whatsapp)}</div>` : ''}
+        ${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}
+      </div>`).join('')}</div>`;
+  }
   if (cardId === 'phrases') {
     return `<div class="list">${rows.map(r => `
       <div class="list-item">
@@ -256,31 +277,42 @@ function renderGroupedByCity(rows, cardId) {
 
 function renderPackingTabbed(rows) {
   if (!rows.length) return '<div class="small">暫無資料</div>';
-  const key = `packingChecklist:${state.session?.username || 'public'}`;
+  const key = `packingChecklistDraft:${state.session?.username || 'public'}`;
   const checked = JSON.parse(localStorage.getItem(key) || '{}');
   const grouped = {};
-  rows.forEach(r => { const g = r.category || '其他'; (grouped[g] ||= []).push(r); });
+  rows
+    .slice()
+    .sort((a, b) => {
+      const ar = truthy(a.required) ? 0 : 1;
+      const br = truthy(b.required) ? 0 : 1;
+      if (ar !== br) return ar - br;
+      return (+a.sort_order || 0) - (+b.sort_order || 0);
+    })
+    .forEach(r => { const g = friendlyPackingCategory(r.category || '其他'); (grouped[g] ||= []).push(r); });
   const categories = Object.keys(grouped);
-  const total = rows.length;
-  const count = rows.filter(r => checked[r.item_id]).length;
-  const percent = total ? Math.round(count / total * 100) : 0;
+  const percent = 0;
 
   const tabs = categories.map((cat, i) => `<button class="btn btn-light packing-tab ${i===0?'active':''}" data-packing-tab="${i}">${cat}</button>`).join('');
   const panels = categories.map((cat, i) => {
     const list = grouped[cat];
     return `
       <div class="packing-panel ${i===0?'':'hidden'}" data-packing-panel="${i}">
-        <div class="checklist">${list.map(r => `<label class="check-item"><input type="checkbox" data-pack="${r.item_id}" ${checked[r.item_id] ? 'checked' : ''}><div><strong>${r.item_name}</strong><div class="meta"><span class="chip">數量：${r.quantity || 1}</span>${truthy(r.required) ? '<span class="chip">必備</span>' : '<span class="chip">建議</span>'}</div>${r.note ? `<div class="small" style="margin-top:6px">${r.note}</div>` : ''}</div></label>`).join('')}</div>
+        <div class="checklist">${list.map(r => {
+          const isChecked = checked[r.item_id] || truthy(r.prechecked);
+          return `<label class="check-item ${truthy(r.required) ? 'required-item' : ''}"><input type="checkbox" data-pack="${r.item_id}" ${isChecked ? 'checked' : ''}><div><strong>${r.item_name}</strong><div class="meta"><span class="chip">數量：${r.quantity || 1}</span>${truthy(r.required) ? '<span class="chip">必備</span>' : '<span class="chip">建議</span>'}</div>${r.note ? `<div class="small" style="margin-top:6px">${r.note}</div>` : ''}</div></label>`;
+        }).join('')}</div>
       </div>`;
   }).join('');
 
   return `
     <div>
-      <div class="small">已完成 ${count} / ${total} 項</div>
+      <div class="small">此清單只供成員 / 家長自行核對，不會提交或記錄到系統。</div>
       <div class="progress"><div style="width:${percent}%"></div></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 10px;gap:10px;flex-wrap:wrap">
         <div class="nav-tabs">${tabs}</div>
-        <button class="btn btn-light" onclick="clearPacking()">清除勾選</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-light" onclick="clearPacking()">清除勾選</button>
+        </div>
       </div>
       <div>${panels}</div>
     </div>`;
@@ -288,11 +320,10 @@ function renderPackingTabbed(rows) {
 
 function bindPackingTabs() {
   document.querySelectorAll('[data-pack]').forEach(cb => cb.addEventListener('change', () => {
-    const key = `packingChecklist:${state.session?.username || 'public'}`;
+    const key = `packingChecklistDraft:${state.session?.username || 'public'}`;
     const checked = JSON.parse(localStorage.getItem(key) || '{}');
     checked[cb.dataset.pack] = cb.checked;
     localStorage.setItem(key, JSON.stringify(checked));
-    openCard('packing');
   }));
   document.querySelectorAll('[data-packing-tab]').forEach(btn => btn.addEventListener('click', () => {
     document.querySelectorAll('[data-packing-tab]').forEach(b => b.classList.remove('active'));
@@ -304,8 +335,8 @@ function bindPackingTabs() {
 }
 
 function clearPacking() {
-  const key = `packingChecklist:${state.session?.username || 'public'}`;
-  localStorage.removeItem(key);
+  const draftKey = `packingChecklistDraft:${state.session?.username || 'public'}`;
+  localStorage.removeItem(draftKey);
   openCard('packing');
 }
 window.clearPacking = clearPacking;
@@ -334,14 +365,30 @@ function renderEmergencyActions(rows) {
 
 function renderHotels(rows) {
   if (!rows.length) return '<div class="small">暫無資料</div>';
-  return `<div class="list">${rows.map(r => `
-    <div class="list-item">
-      <strong>${formatCell(r.hotel_name)}</strong>
-      <div class="small" style="margin-top:6px">日期：${formatCellByKey('date', r.date)}｜地點：${formatCell(r.location)}</div>
-      ${r.address ? `<div class="small">地址：${formatCell(r.address)}</div>` : ''}
-      ${r.map_url ? `<div class="small">地圖：${formatCell(r.map_url)}</div>` : ''}
-      ${r.transport_note ? `<div class="small">交通：${formatCell(r.transport_note)}</div>` : ''}
-    </div>`).join('')}</div>`;
+  const grouped = {};
+  rows.forEach(r => {
+    const key = [r.location || '', r.hotel_name || '', r.address || ''].join('|');
+    if (!grouped[key]) grouped[key] = { ...r, dates: [] };
+    if (r.date) grouped[key].dates.push(r.date);
+  });
+  const list = Object.values(grouped);
+  const tabs = list.map((r, i) => `<button class="btn btn-light hotel-tab ${i===0?'active':''}" data-hotel-tab="${i}">${r.location || r.hotel_name || '酒店'}</button>`).join('');
+  const panels = list.map((r, i) => `
+    <div class="hotel-panel ${i===0?'':'hidden'}" data-hotel-panel="${i}">
+      <div class="list-item">
+        <strong>${formatCell(r.hotel_name)}</strong>
+        <div class="small" style="margin-top:6px">日期：${r.dates.map(d => formatCellByKey('date', d)).join('、')}</div>
+        <div class="small">地點：${formatCell(r.location)}</div>
+        ${r.address ? `<div class="small">地址：${formatCell(r.address)}</div>` : ''}
+        ${r.phone ? `<div class="small">電話：${formatCell(r.phone)}</div>` : ''}
+        ${r.booking_id ? `<div class="small">預訂 / 確認編號：${formatCell(r.booking_id)}</div>` : ''}
+        ${r.order_id ? `<div class="small">訂單編號：${formatCell(r.order_id)}</div>` : ''}
+        ${r.pin_code ? `<div class="small">PIN 碼：${formatCell(r.pin_code)}</div>` : ''}
+        ${r.map_url ? `<div class="small">地圖：${formatCell(r.map_url)}</div>` : ''}
+        ${r.transport_note ? `<div class="small">交通：${formatCell(r.transport_note)}</div>` : ''}
+      </div>
+    </div>`).join('');
+  return `<div class="nav-tabs">${tabs}</div><div style="margin-top:14px">${panels}</div>`;
 }
 
 function renderTransport(rows) {
@@ -361,7 +408,7 @@ function renderTransport(rows) {
 function renderRules(rows) {
   if (!rows.length) return '<div class="small">暫無資料</div>';
   const sorted = [...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0));
-  return `<div class="list">${sorted.map(r => `<div class="list-item"><strong>${r.sort_order}.</strong><div style="margin-top:6px">${formatCell(r.rule)}</div></div>`).join('')}</div>`;
+  return `<div class="list">${sorted.map(r => `<div class="list-item"><div>${formatCell(r.rule)}</div></div>`).join('')}</div>`;
 }
 
 function formatCell(v) {
@@ -397,6 +444,36 @@ function formatTimeOnly(v) {
   return m ? m[1] : s;
 }
 
+function friendlyPackingCategory(name) {
+  const map = {
+    '證件文件': '出發必備文件',
+    '出發必備文件': '出發必備文件',
+    '財物支付': '金錢與付款',
+    '金錢與付款': '金錢與付款',
+    '通訊電子': '手機與充電',
+    '手機與充電': '手機與充電',
+    '日常衣物': '日常換洗衣物',
+    '衣物穿著': '日常換洗衣物',
+    '日常換洗衣物': '日常換洗衣物',
+    '鞋履': '鞋襪與外出穿著',
+    '鞋襪與外出穿著': '鞋襪與外出穿著',
+    '防曬防雨': '防曬防雨用品',
+    '防曬防雨用品': '防曬防雨用品',
+    '盥洗衛生': '個人清潔用品',
+    '個人清潔用品': '個人清潔用品',
+    '健康安全': '健康與安全用品',
+    '健康與安全用品': '健康與安全用品',
+    '活動專用': '日間活動用品',
+    '日間活動用品': '日間活動用品',
+    '潛水 / 漂流': '玩水及活動後更換用品',
+    '玩水及活動後更換用品': '玩水及活動後更換用品',
+    '上山保暖': '上山保暖用品',
+    '上山保暖用品': '上山保暖用品',
+    '家長提醒': '出發前家長確認',
+    '出發前家長確認': '出發前家長確認'
+  };
+  return map[name] || name;
+}
 function labelize(k) { return k.replace(/_/g,' '); }
 function truthy(v) { return String(v).toUpperCase() === 'TRUE' || v === true || v === 'Yes' || v === '是'; }
 
