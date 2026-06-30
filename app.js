@@ -75,7 +75,8 @@ async function renderHeroEmergencyCard() {
     return;
   }
   box.classList.remove('hidden');
-  box.innerHTML = `<strong>個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">點擊展開查看</div>`;
+  box.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">點擊展開查看你的緊急聯絡資料、領袖聯絡及印尼緊急電話</div>`;
+  box.style.cursor = 'pointer';
   box.onclick = () => openCard('emergency_member_info', false);
 }
 
@@ -107,12 +108,19 @@ async function openCard(cardId, shouldScroll = false) {
 
   if (cardId === 'emergency_member_info') {
     const heroBox = document.getElementById('heroEmergencyCard');
-    heroBox.innerHTML = '<strong>個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">讀取資料中...</div>';
+    heroBox.innerHTML = '<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">讀取資料中...</div>';
     try {
       const data = await api('getCardData', { session: state.session, cardId });
-      heroBox.innerHTML = `<strong>個人緊急聯絡資料</strong><div style="margin-top:10px">${renderEmergencyMemberInfo(data.rows || [])}</div>`;
+      heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div style="margin-top:10px">${renderEmergencyMemberInfo(data.rows || [])}</div>`;
     } catch (err) {
-      heroBox.innerHTML = `<strong>個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">${err.message}</div>`;
+      // 後端尚未更新時的容錯備用方案：從其他 API 組合資料
+      console.warn('emergency_member_info API 失敗，使用備用方案:', err.message);
+      try {
+        const rows = await buildEmergencyMemberInfoFallback();
+        heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div style="margin-top:10px">${renderEmergencyMemberInfo(rows)}</div>`;
+      } catch (err2) {
+        heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div class="small" style="margin-top:6px">載入失敗：${err2.message}<br>請確認後端 Code.gs 已更新部署。</div>`;
+      }
     }
     return;
   }
@@ -187,6 +195,73 @@ function renderTransport(rows) { return `<div class="list">${rows.map(r => `<div
 function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)).map(r => `<div class="list-item"><div>${formatCell(r.rule)}</div></div>`).join('')}</div>`; }
 
 function formatCell(v) { if (v == null || v === '') return '-'; if (typeof v === 'string' && /^https?:\/\//.test(v)) return `<a class="link" href="${v}" target="_blank">開啟連結</a>`; return String(v).replace(/\n/g, '<br>'); }
+
+/* ── 個人緊急聯絡資料：後端未更新時的容錯備用方案 ── */
+async function buildEmergencyMemberInfoFallback() {
+  const rows = [];
+  const isLeader = can('leader');
+
+  // 1. 領袖/超管：取全部成員；普通成員：取自己
+  if (isLeader) {
+    try {
+      const mData = await api('getCardData', { session: state.session, cardId: 'members_all' });
+      (mData.rows || []).forEach(m => {
+        rows.push({
+          display_name: (m.chinese_name || '') + (m.english_name ? ' / ' + m.english_name : ''),
+          member_phone: m.phone || '',
+          emergency_contact_name: m.parent_name || '',
+          emergency_contact_phone: m.parent_phone || '',
+          note: m.role_type || ''
+        });
+      });
+    } catch {}
+  } else {
+    try {
+      const pData = await api('getMyProfile', { session: state.session });
+      const p = pData.profile;
+      if (p) rows.push({
+        display_name: (p.chinese_name || '') + (p.english_name ? ' / ' + p.english_name : ''),
+        member_phone: p.phone || '',
+        emergency_contact_name: p.parent_name || '',
+        emergency_contact_phone: p.parent_phone || '',
+        note: '你的個人緊急聯絡資料'
+      });
+    } catch {}
+  }
+
+  // 2. 領袖聯絡
+  try {
+    const cData = await api('getCardData', { session: state.session, cardId: 'emergency_contacts' });
+    (cData.rows || []).forEach(c => {
+      rows.push({ display_name: c.name || '', member_phone: c.phone || '', emergency_contact_name: '', emergency_contact_phone: '', note: c.note || '' });
+    });
+  } catch {}
+
+  // 3. 印尼官方緊急電話（固定值）
+  const hotlines = [
+    { display_name: '🇮🇩 印尼綜合緊急求助', member_phone: '112', note: '全國綜合緊急求助' },
+    { display_name: '🇮🇩 印尼警察', member_phone: '110', note: '警察' },
+    { display_name: '🇮🇩 印尼救護車', member_phone: '118 / 119', note: '救護車 / 醫療求助' },
+    { display_name: '🇮🇩 印尼消防', member_phone: '113', note: '消防' },
+    { display_name: '🇮🇩 印尼搜救 BASARNAS', member_phone: '115', note: '搜救' },
+    { display_name: '🇮🇩 印尼天災協助', member_phone: '129', note: '天災協助' }
+  ];
+  rows.push(...hotlines);
+
+  // 4. 酒店前台電話
+  try {
+    const hData = await api('getCardData', { session: state.session, cardId: 'hotels' });
+    const seen = {};
+    (hData.rows || []).forEach(h => {
+      const key = (h.hotel_name || '') + '|' + (h.phone || '');
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      rows.push({ display_name: '🏨 ' + (h.hotel_name || '酒店前台'), member_phone: h.phone || '', emergency_contact_name: '', emergency_contact_phone: '', note: '酒店前台電話' });
+    });
+  } catch {}
+
+  return rows;
+}
 
 /* ── 行程路線圖 ── */
 let _routeMapRows = [];
