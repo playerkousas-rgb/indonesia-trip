@@ -197,9 +197,19 @@ function getEmergencyMemberInfoRows_(safe) {
   requireRole_(safe, 'member');
   const members = getRows_('MEMBERS');
   const contacts = getEmergencyContactsFor_(safe);
+  const hotels = getRows_('hotels').filter(r => r.hotel_name || r.phone);
+
+  const emergencyHotlines = [
+    { display_name:'印尼綜合緊急求助', member_phone:'112', note:'全國綜合緊急求助' },
+    { display_name:'印尼警察', member_phone:'110', note:'警察' },
+    { display_name:'印尼救護車', member_phone:'118 / 119', note:'救護車 / 醫療求助' },
+    { display_name:'印尼消防', member_phone:'113', note:'消防' },
+    { display_name:'印尼搜救 BASARNAS', member_phone:'115', note:'搜救' },
+    { display_name:'印尼天災協助', member_phone:'129', note:'天災協助' }
+  ];
 
   if (safe.role === 'leader' || safe.role === 'superadmin') {
-    return members.map(m => ({
+    const rows = members.map(m => ({
       member_id: m.member_id,
       display_name: (m.chinese_name || '') + (m.english_name ? ' / ' + m.english_name : ''),
       member_phone: m.phone || '',
@@ -207,6 +217,16 @@ function getEmergencyMemberInfoRows_(safe) {
       emergency_contact_phone: m.parent_phone || '',
       note: '緊急時可先通知隨隊領袖或香港支援，另可直接聯絡此成員之家屬。'
     }));
+    contacts.forEach((c, i) => rows.push({ member_id:'leader-' + (i+1), display_name:c.name || '', member_phone:c.phone || '', emergency_contact_name:'', emergency_contact_phone:'', note:c.note || '' }));
+    emergencyHotlines.forEach((c, i) => rows.push({ member_id:'hotline-' + (i+1), display_name:c.display_name, member_phone:c.member_phone, emergency_contact_name:'', emergency_contact_phone:'', note:c.note }));
+    const hotelSeen = {};
+    hotels.forEach((h, i) => {
+      const key = norm_(h.hotel_name) + '|' + norm_(h.phone);
+      if (!key || hotelSeen[key]) return;
+      hotelSeen[key] = true;
+      rows.push({ member_id:'hotel-' + (i+1), display_name:(h.hotel_name || '酒店前台'), member_phone:h.phone || '', emergency_contact_name:'', emergency_contact_phone:'', note:'酒店前台電話' });
+    });
+    return rows;
   }
 
   const me = members.find(m => norm_(m.member_id) === norm_(safe.member_id));
@@ -218,7 +238,7 @@ function getEmergencyMemberInfoRows_(safe) {
     member_phone: me.phone || '',
     emergency_contact_name: me.parent_name || '',
     emergency_contact_phone: me.parent_phone || '',
-    note: '以下同時附上領袖及支援聯絡電話，以便當地緊急時即時聯絡。'
+    note: '以下同時附上領袖、酒店及印尼官方緊急電話，以便當地緊急時即時聯絡。'
   }];
 
   contacts.forEach((c, i) => rows.push({
@@ -229,6 +249,30 @@ function getEmergencyMemberInfoRows_(safe) {
     emergency_contact_phone: '',
     note: c.note || ''
   }));
+
+  emergencyHotlines.forEach((c, i) => rows.push({
+    member_id: 'hotline-' + (i+1),
+    display_name: c.display_name,
+    member_phone: c.member_phone,
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+    note: c.note
+  }));
+
+  const hotelSeen = {};
+  hotels.forEach((h, i) => {
+    const key = norm_(h.hotel_name) + '|' + norm_(h.phone);
+    if (!key || hotelSeen[key]) return;
+    hotelSeen[key] = true;
+    rows.push({
+      member_id: 'hotel-' + (i+1),
+      display_name: h.hotel_name || '酒店前台',
+      member_phone: h.phone || '',
+      emergency_contact_name: '',
+      emergency_contact_phone: '',
+      note: '酒店前台電話'
+    });
+  });
 
   return rows;
 }
