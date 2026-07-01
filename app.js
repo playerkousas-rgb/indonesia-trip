@@ -94,6 +94,8 @@ function renderCards() {
   box.innerHTML = '';
   state.cards.forEach(card => {
     if (card.card_id === 'emergency_member_info') return;
+    if (card.card_id === 'flights') return; // 航班由前端合成
+    if (card.card_id === 'hotels') return; // 酒店由前端合成
     const el = document.createElement('div');
     el.className = 'card';
     el.id = `card-${card.card_id}`;
@@ -106,6 +108,23 @@ function renderCards() {
     el.className = 'card';
     el.id = 'card-driver_info';
     el.innerHTML = `<div class="card-top"><div class="icon">🚕</div><div class="badge">member</div></div><h3>司機信息 Driver Info</h3><p>給的士司機看的酒店及機場地址（英文 / 印尼文）</p><div class="card-footer"><span class="small">離線可用</span><button class="btn btn-light" data-card="driver_info">進入</button></div><div class="inline-card-content hidden" id="inline-driver_info"><div class="inline-card-body small">讀取資料中...</div></div>`;
+    box.appendChild(el);
+  }
+  // 航班詳情卡片（member 專屬，看機票PDF）
+  const myId = state.session?.member_id || '';
+  if (FLIGHT_TICKETS[myId] || can('leader')) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.id = 'card-flight_details';
+    el.innerHTML = `<div class="card-top"><div class="icon">🎫</div><div class="badge">member</div></div><h3>航班詳情</h3><p>你的機票及完整 PDF</p><div class="card-footer"><span class="small">含機票 PDF</span><button class="btn btn-light" data-card="flight_details">進入</button></div><div class="inline-card-content hidden" id="inline-flight_details"><div class="inline-card-body small">讀取資料中...</div></div>`;
+    box.appendChild(el);
+  }
+  // 酒店詳情卡片（member 專屬，看PDF）
+  if (can('member')) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.id = 'card-hotel_details';
+    el.innerHTML = `<div class="card-top"><div class="icon">📄</div><div class="badge">member</div></div><h3>酒店詳情</h3><p>入住憑證及完整 PDF</p><div class="card-footer"><span class="small">含酒店 PDF</span><button class="btn btn-light" data-card="hotel_details">進入</button></div><div class="inline-card-content hidden" id="inline-hotel_details"><div class="inline-card-body small">讀取資料中...</div></div>`;
     box.appendChild(el);
   }
   box.querySelectorAll('[data-card]').forEach(btn => btn.addEventListener('click', () => openCard(btn.dataset.card, false)));
@@ -159,6 +178,28 @@ async function openCard(cardId, shouldScroll = false) {
     return;
   }
 
+  if (cardId === 'flight_details') {
+    const inline = document.getElementById('inline-flight_details');
+    const inlineBody = inline?.querySelector('.inline-card-body');
+    if (inline) { inline.classList.remove('hidden'); inlineBody.innerHTML = '<div class="small">讀取資料中...</div>'; }
+    inlineBody.innerHTML = renderFlightDetails([]);
+    return;
+  }
+
+  if (cardId === 'hotel_details') {
+    const inline = document.getElementById('inline-hotel_details');
+    const inlineBody = inline?.querySelector('.inline-card-body');
+    if (inline) { inline.classList.remove('hidden'); inlineBody.innerHTML = '<div class="small">讀取資料中...</div>'; }
+    try {
+      const hData = await api('getCardData', { session: state.session, cardId: 'hotels' });
+      inlineBody.innerHTML = renderHotelDetails(hData.rows || []);
+    } catch {
+      inlineBody.innerHTML = renderHotelDetails([]);
+    }
+    bindHotelTabs();
+    return;
+  }
+
   const inline = document.getElementById(`inline-${cardId}`);
   const inlineBody = inline?.querySelector('.inline-card-body');
   if (inline) {
@@ -192,11 +233,13 @@ function renderCardData(cardId, rows) {
   if (cardId === 'emergency_contacts') return renderEmergencyContacts(rows);
   if (cardId === 'emergency_member_info') return renderEmergencyMemberInfo(rows);
   if (cardId === 'members_all') return renderMembersTabbed(rows);
-  if (cardId === 'hotels') return renderHotels(rows);
+  if (cardId === 'hotels') return renderHotelsPublic(rows);
+  if (cardId === 'hotel_details') return renderHotelDetails(rows);
   if (cardId === 'transport_info') return renderTransport(rows);
   if (cardId === 'team_rules') return renderRules(rows);
   if (cardId === 'route_map') return renderRouteMap(rows);
-  if (cardId === 'flights') return renderFlights(rows);
+  if (cardId === 'flights') return renderFlightsPublic(rows);
+  if (cardId === 'flight_details') return renderFlightDetails(rows);
   if (['restaurants','souvenirs','attractions','marine_life','phrases','apps'].includes(cardId)) return renderGroupedByCity(rows, cardId);
   return renderGenericTable(rows);
 }
@@ -236,7 +279,59 @@ window.closeHeroEmergency = closeHeroEmergency;
 
 function renderWeather(rows) { return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${r.city}</strong><div class="small" style="margin-top:6px">現時：${r.current_temp ?? '-'}°C｜體感：${r.apparent_temp ?? '-'}°C｜風速：${r.wind_speed ?? '-'} km/h</div><div class="small">今日：${r.temp_min ?? '-'}°C - ${r.temp_max ?? '-'}°C｜降雨：${r.precipitation ?? 0} mm</div><div class="small">明日：${r.tomorrow_min ?? '-'}°C - ${r.tomorrow_max ?? '-'}°C</div><div class="small">日出：${formatTimeOnly(r.sunrise)}｜日落：${formatTimeOnly(r.sunset)}</div>${r.sea_temp !== '' && r.sea_temp != null ? `<div class="small">海水溫度：${r.sea_temp}°C</div>` : ''}<div class="small">更新：${formatDateTime(r.time)}</div></div>`).join('')}<div class="list-item color-blue"><strong>資料來源</strong><div class="small">Open-Meteo forecast API；海水溫度只顯示峇里。</div></div></div>`; }
 function renderRates(rows) { return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${r.pair}</strong><div style="margin-top:6px">${r.rate}</div><div class="small">更新：${formatCellByKey('updated_at', r.updated_at)}</div></div>`).join('')}</div>`; }
-function renderHotels(rows) { if (!rows.length) return '<div class="small">暫無資料</div>'; const grouped = {}; rows.forEach(r => { const key = [r.location || '', r.hotel_name || '', r.address || ''].join('|'); if (!grouped[key]) grouped[key] = { ...r, dates: [] }; if (r.date) grouped[key].dates.push(r.date); }); const list = Object.values(grouped); const tabs = list.map((r, i) => `<button class="btn btn-light hotel-tab ${i===0?'active':''}" data-hotel-tab="${i}">${r.location || r.hotel_name || '酒店'}</button>`).join(''); const panels = list.map((r, i) => `<div class="hotel-panel ${i===0?'':'hidden'}" data-hotel-panel="${i}"><div class="list-item"><strong>${formatCell(r.hotel_name)}</strong><div class="small" style="margin-top:6px">日期：${r.dates.map(d => formatCellByKey('date', d)).join('、')}</div><div class="small">地點：${formatCell(r.location)}</div>${r.address ? `<div class="small">地址：${formatCell(r.address)}</div>` : ''}${r.phone ? `<div class="small">電話：${formatCell(r.phone)}</div>` : ''}${r.booking_id ? `<div class="small">預訂 / 確認編號：${formatCell(r.booking_id)}</div>` : ''}${r.order_id ? `<div class="small">訂單編號：${formatCell(r.order_id)}</div>` : ''}${r.pin_code ? `<div class="small">PIN 碼：${formatCell(r.pin_code)}</div>` : ''}${r.map_url ? `<div class="small">地圖：${formatCell(r.map_url)}</div>` : ''}${r.transport_note ? `<div class="small">交通：${formatCell(r.transport_note)}</div>` : ''}</div></div>`).join(''); return `<div class="nav-tabs">${tabs}</div><div style="margin-top:14px">${panels}</div>`; }
+function renderHotelsPublic(rows) {
+  if (!rows.length) return '<div class="small">暫無資料</div>';
+  const grouped = {};
+  rows.forEach(r => {
+    const key = [r.location || '', r.hotel_name || '', r.address || ''].join('|');
+    if (!grouped[key]) grouped[key] = { ...r, dates: [] };
+    if (r.date) grouped[key].dates.push(r.date);
+  });
+  const list = Object.values(grouped);
+  return `<div class="list">${list.map(r => `<div class="list-item">
+    <strong style="color:#0f172a">${formatCell(r.hotel_name)}</strong>
+    <div style="margin-top:6px;font-size:13px;color:#334155">地點：${formatCell(r.location)}</div>
+    <div style="font-size:13px;color:#334155">日期：${r.dates.map(d => formatCellByKey('date', d)).join('、')}</div>
+    ${r.address && r.address !== 'same address' ? `<div style="font-size:13px;color:#334155">地址：${formatCell(r.address)}</div>` : ''}
+    ${r.phone ? `<div style="font-size:13px;color:#334155">電話：${formatCell(r.phone)}</div>` : ''}
+    ${r.map_url ? `<div style="font-size:13px;margin-top:4px">地圖：${formatCell(r.map_url)}</div>` : ''}
+  </div>`).join('')}</div>`;
+}
+
+function renderHotelDetails(rows) {
+  if (!rows.length) return '<div class="small">暫無資料</div>';
+  const grouped = {};
+  rows.forEach(r => {
+    const key = [r.location || '', r.hotel_name || '', r.address || ''].join('|');
+    if (!grouped[key]) grouped[key] = { ...r, dates: [] };
+    if (r.date) grouped[key].dates.push(r.date);
+  });
+  const list = Object.values(grouped);
+
+  const HOTEL_PDFS = [
+    { label: '峇里島 — 入住憑證', pdf: 'hotels/bali-voucher.pdf', desc: 'Grand Palace Hotel Sanur｜5房2晚｜7/11-7/13' },
+    { label: '雅加達 — 收據', pdf: 'hotels/jakarta-receipt.pdf', desc: 'Aryaduta Menteng｜5房2晚｜7/18-7/20' },
+    { label: '雅加達 — 確認通知', pdf: 'hotels/jakarta-confirmation.pdf', desc: 'Agoda 確認郵件｜Booking ID 1725058563' }
+  ];
+
+  let html = '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:8px">📄 酒店正式文件</div>';
+  HOTEL_PDFS.forEach(h => {
+    html += `<div class="list-item" style="margin-bottom:10px">
+      <strong style="color:#0f766e;font-size:14px">${h.label}</strong>
+      <div style="font-size:12px;color:#64748b;margin-top:4px">${h.desc}</div>
+      <iframe src="${h.pdf}" style="width:100%;height:400px;border:1px solid #dbe3ee;border-radius:10px;margin-top:8px" loading="lazy"></iframe>
+      <div style="margin-top:4px"><a href="${h.pdf}" target="_blank" class="link" style="font-size:12px">在新分頁開啟 PDF</a></div>
+    </div>`;
+  });
+
+  html += '<div style="font-size:14px;font-weight:700;color:#0f172a;margin:10px 0 8px">📋 酒店擇要</div>';
+  const tabs = list.map((r, i) => `<button class="btn btn-light hotel-tab ${i===0?'active':''}" data-hotel-tab="${i}">${r.location || r.hotel_name || '酒店'}</button>`).join('');
+  const panels = list.map((r, i) => `<div class="hotel-panel ${i===0?'':'hidden'}" data-hotel-panel="${i}"><div class="list-item"><strong>${formatCell(r.hotel_name)}</strong><div class="small" style="margin-top:6px">日期：${r.dates.map(d => formatCellByKey('date', d)).join('、')}</div><div class="small">地點：${formatCell(r.location)}</div>${r.address && r.address !== 'same address' ? `<div class="small">地址：${formatCell(r.address)}</div>` : ''}${r.phone ? `<div class="small">電話：${formatCell(r.phone)}</div>` : ''}${r.booking_id ? `<div class="small">預訂 / 確認編號：${formatCell(r.booking_id)}</div>` : ''}${r.order_id ? `<div class="small">訂單編號：${formatCell(r.order_id)}</div>` : ''}${r.pin_code ? `<div class="small">PIN 碼：${formatCell(r.pin_code)}</div>` : ''}${r.map_url ? `<div class="small">地圖：${formatCell(r.map_url)}</div>` : ''}${r.transport_note ? `<div class="small">交通：${formatCell(r.transport_note)}</div>` : ''}</div></div>`).join('');
+  html += `<div class="nav-tabs">${tabs}</div><div style="margin-top:14px">${panels}</div>`;
+  return html;
+}
+
+function renderTransport
 function renderTransport(rows) { return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.route)}</strong><div class="small" style="margin-top:6px">由：${formatCell(r.from_place)}</div><div class="small">到：${formatCell(r.to_place)}</div><div class="small">方式：${formatCell(r.method)}</div><div class="small">車程：約 ${formatCell(r.estimated_time)}</div><div class="small">費用：約 ${formatCell(r.estimated_cost)}</div>${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
 function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)).map(r => `<div class="list-item"><div>${formatCell(r.rule)}</div></div>`).join('')}</div>`; }
 
@@ -245,14 +340,15 @@ const AIRLINE_INFO = {
   'CX': { name: '國泰航空 Cathay Pacific', phone_hk: '+852 2747 3342', phone_bali: '+62 361 936 6964', phone_jkt: '+62 21 2903 4033', website: 'https://www.cathaypacific.com' }
 };
 
-/* ── 機票資料（從 PDF 提取） ── */
+/* ── 機票資料 ── */
 const FLIGHT_TICKETS = {
-  'M001': { name_en: 'Cheng Lok Yin', ticket: '160 2130847792', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
-  'M002': { name_en: 'Kok Chun', ticket: '160 2130847795', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
-  'M003': { name_en: 'Ho Yee Tak', ticket: '160 2130847794', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
-  'M004': { name_en: 'Ng Wing Hei', ticket: '160 2130847797', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
-  'L004': { name_en: 'Yeung Tsz Yan Vico', ticket: '160 2130847798', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' },
-  'L005': { name_en: 'Mok Wing Man', ticket: '160 2130847796', booking_ref: 'FOMII9', cabin: 'Economy Light', baggage: '1PC (23kg)' }
+  'M001': { name_en: 'Cheng Lok Yin', pdf: 'tickets/CHENG LOK YIN 11JUL HKG.pdf' },
+  'M002': { name_en: 'Kok Chun', pdf: 'tickets/KOK CHUN 11JUL HKG.pdf' },
+  'M003': { name_en: 'Ho Yee Tak', pdf: 'tickets/HO YEE TAK 11JUL HKG.pdf' },
+  'M004': { name_en: 'Ng Wing Hei', pdf: 'tickets/NG WING HEI 11JUL HKG.pdf' },
+  'L001': { name_en: 'Pang Chi Fung Arthur', pdf: null, note: '自行購票，同班機 CX785 / CX776' },
+  'L004': { name_en: 'Yeung Tsz Yan Vico', pdf: 'tickets/YEUNG TSZ YAN VICO 11JUL HKG.pdf' },
+  'L005': { name_en: 'Mok Wing Man', pdf: 'tickets/MOK WING MAN 11JUL HKG.pdf' }
 };
 
 const SHARED_FLIGHTS = [
@@ -260,40 +356,9 @@ const SHARED_FLIGHTS = [
   { leg: '回程', route: '雅加達 CGK → 香港 HKG', flight: 'CX776', date: '20 Jul 2026', depart: '14:20', arrive: '20:30', terminal_from: 'T3', terminal_to: 'T1', duration: '5小時10分' }
 ];
 
-function renderFlights(rows) {
+function renderFlightsPublic(rows) {
   const cx = AIRLINE_INFO['CX'];
-  const isLeader = can('leader');
-  const myId = state.session?.member_id || '';
-  const myTicket = FLIGHT_TICKETS[myId];
   let html = '';
-
-  // 國泰航空聯絡（永遠在最頂）
-  html += `<div class="list-item" style="border-left:4px solid #0f766e;margin-bottom:10px">
-    <strong style="color:#0f766e;font-size:15px">✈️ ${cx.name}</strong>
-    <div style="margin-top:6px;font-size:13px;color:#334155">香港：${cx.phone_hk}</div>
-    <div style="font-size:13px;color:#334155">峇里：${cx.phone_bali}</div>
-    <div style="font-size:13px;color:#334155">雅加達：${cx.phone_jkt}</div>
-    <div style="font-size:13px;margin-top:4px"><a href="${cx.website}" target="_blank" class="link">${cx.website}</a></div>
-  </div>`;
-
-  // 我的機票
-  if (myTicket) {
-    html += `<div class="list-item" style="border-left:4px solid #2563eb">
-      <strong style="color:#2563eb;font-size:15px">🎫 你的機票</strong>
-      <div style="margin-top:8px;font-size:13px;color:#334155">乘客：${myTicket.name_en}</div>
-      <div style="font-size:13px;color:#334155">訂單編號：${myTicket.booking_ref}</div>
-      <div style="font-size:13px;color:#334155">票號：${myTicket.ticket}</div>
-      <div style="font-size:13px;color:#334155">艙等：${myTicket.cabin}｜行李：${myTicket.baggage}</div>
-    </div>`;
-  } else if (!isLeader) {
-    html += `<div class="list-item" style="border-left:4px solid #f59e0b">
-      <strong style="color:#b45309;font-size:14px">⚠️ 你未在此訂單內</strong>
-      <div style="margin-top:6px;font-size:13px;color:#334155">你可能自行安排航班，請向領隊確認行程。</div>
-    </div>`;
-  }
-
-  // 航班詳情
-  html += `<div style="margin-top:4px;font-size:12px;color:#64748b;font-weight:700">航班詳情</div>`;
   SHARED_FLIGHTS.forEach(f => {
     html += `<div class="list-item">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -302,27 +367,17 @@ function renderFlights(rows) {
       </div>
       <div style="margin-top:6px;font-size:14px;font-weight:700;color:#0f766e">${f.route}</div>
       <div style="margin-top:6px;font-size:13px;color:#334155">出發 ${f.depart}（Terminal ${f.terminal_from}）→ 抵達 ${f.arrive}（Terminal ${f.terminal_to}）</div>
-      <div style="font-size:13px;color:#334155">飛行時間：${f.duration}</div>
+      <div style="font-size:13px;color:#334155">飛行時間：${f.duration}｜航空公司：${cx.name}</div>
     </div>`;
   });
-
-  // 領袖/超管：全部機票
-  if (isLeader) {
-    html += `<div style="margin-top:4px;font-size:12px;color:#64748b;font-weight:700">全部機票（${Object.keys(FLIGHT_TICKETS).length} 人）</div>`;
-    Object.entries(FLIGHT_TICKETS).forEach(([id, t]) => {
-      html += `<div class="list-item" style="padding:10px">
-        <strong style="color:#0f172a;font-size:14px">${id} ${t.name_en}</strong>
-        <div style="font-size:12px;color:#334155;margin-top:4px">票號：${t.ticket}｜訂單：${t.booking_ref}｜${t.cabin}｜${t.baggage}</div>
-      </div>`;
-    });
-    html += `<div class="list-item" style="padding:10px;border-left:4px solid #f59e0b">
-      <div style="font-size:13px;color:#b45309"><strong>⚠️ 以下成員自行出發，不在此訂單：</strong></div>
-      <div style="font-size:12px;color:#334155;margin-top:4px">L001 彭智豐、L002 劉嘉韻、L003 方天蔚</div>
-    </div>`;
-  }
-
-  // 航班延誤/意外處理
-  html += `<div class="list-item" style="border-left:4px solid #f59e0b;margin-top:10px">
+  html += `<div class="list-item" style="border-left:4px solid #0f766e">
+    <strong style="color:#0f766e;font-size:15px">✈️ ${cx.name} 聯絡</strong>
+    <div style="margin-top:6px;font-size:13px;color:#334155">香港：${cx.phone_hk}</div>
+    <div style="font-size:13px;color:#334155">峇里：${cx.phone_bali}</div>
+    <div style="font-size:13px;color:#334155">雅加達：${cx.phone_jkt}</div>
+    <div style="font-size:13px;margin-top:4px"><a href="${cx.website}" target="_blank" class="link">${cx.website}</a></div>
+  </div>`;
+  html += `<div class="list-item" style="border-left:4px solid #f59e0b">
     <strong style="color:#b45309">⚠️ 航班延誤或意外處理</strong>
     <div style="margin-top:8px;font-size:13px;color:#334155;line-height:1.7">
       1. 立即通知領隊，由領隊統一處理<br>
@@ -333,10 +388,50 @@ function renderFlights(rows) {
       6. 家長可致電香港支援（袁可秀女士：90340099）
     </div>
   </div>`;
-
   return html;
 }
 
+function renderFlightDetails(rows) {
+  const myId = state.session?.member_id || '';
+  const myTicket = FLIGHT_TICKETS[myId];
+  const isLeader = can('leader');
+  let html = '';
+  if (myTicket && myTicket.pdf) {
+    html += `<div style="margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:8px">🎫 你的機票</div>
+      <iframe src="${myTicket.pdf}" style="width:100%;height:500px;border:1px solid #dbe3ee;border-radius:14px" loading="lazy"></iframe>
+      <div style="margin-top:6px"><a href="${myTicket.pdf}" target="_blank" class="link" style="font-size:13px">在新分頁開啟 PDF</a></div>
+    </div>`;
+  } else if (myTicket && !myTicket.pdf) {
+    html += `<div class="list-item" style="border-left:4px solid #0f766e;margin-bottom:10px">
+      <strong style="color:#0f766e">🎫 你的機票</strong>
+      <div style="margin-top:6px;font-size:13px;color:#334155">${myTicket.note}</div>
+    </div>`;
+  }
+  if (isLeader) {
+    html += `<div style="margin-top:4px;font-size:12px;color:#64748b;font-weight:700">全部機票</div>`;
+    Object.entries(FLIGHT_TICKETS).forEach(([id, t]) => {
+      if (t.pdf) {
+        html += `<div class="list-item" style="padding:10px">
+          <strong style="color:#0f172a;font-size:14px">${id} ${t.name_en}</strong>
+          <div style="margin-top:6px"><a href="${t.pdf}" target="_blank" class="link" style="font-size:13px">開啟機票 PDF</a></div>
+        </div>`;
+      } else {
+        html += `<div class="list-item" style="padding:10px;border-left:4px solid #0f766e">
+          <strong style="color:#0f172a;font-size:14px">${id} ${t.name_en}</strong>
+          <div style="font-size:12px;color:#0f766e;margin-top:4px">${t.note}</div>
+        </div>`;
+      }
+    });
+    html += `<div class="list-item" style="padding:10px;border-left:4px solid #f59e0b">
+      <div style="font-size:13px;color:#b45309"><strong>⚠️ 以下成員自行出發，不在此訂單：</strong></div>
+      <div style="font-size:12px;color:#334155;margin-top:4px">L002 劉嘉韻、L003 方天蔚</div>
+    </div>`;
+  }
+  return html;
+}
+
+function formatCell
 function formatCell(v) { if (v == null || v === '') return '-'; if (typeof v === 'string' && /^https?:\/\//.test(v)) return `<a class="link" href="${v}" target="_blank">開啟連結</a>`; return String(v).replace(/\n/g, '<br>'); }
 
 /* ── 司機信息（可收合手風琴） ── */
