@@ -94,14 +94,30 @@ function renderCards() {
   box.innerHTML = '';
   state.cards.forEach(card => {
     if (card.card_id === 'emergency_member_info') return;
-    if (card.card_id === 'flights') return; // 航班由前端合成
-    if (card.card_id === 'hotels') return; // 酒店由前端合成
+    if (card.card_id === 'flights') return; // 航班由前端合成（public + member 版）
+    if (card.card_id === 'hotels') return; // 酒店由前端合成（public + member 版）
     const el = document.createElement('div');
     el.className = 'card';
     el.id = `card-${card.card_id}`;
     el.innerHTML = `<div class="card-top"><div class="icon">${card.icon || '📄'}</div><div class="badge">${card.visibility || 'public'}</div></div><h3>${card.title}</h3><p>${card.description || ''}</p><div class="card-footer"><span class="small">由 Google Sheet 控制</span><button class="btn btn-light" data-card="${card.card_id}">進入</button></div><div class="inline-card-content hidden" id="inline-${card.card_id}"><div class="inline-card-body small">讀取資料中...</div></div>`;
     box.appendChild(el);
   });
+  // 航班資訊卡片（Public，家長也可看）
+  {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.id = 'card-flights';
+    el.innerHTML = `<div class="card-top"><div class="icon">✈️</div><div class="badge">public</div></div><h3>航班資訊</h3><p>航班擇要、國泰航空聯絡及延誤處理</p><div class="card-footer"><span class="small">家長可見</span><button class="btn btn-light" data-card="flights">進入</button></div><div class="inline-card-content hidden" id="inline-flights"><div class="inline-card-body small">讀取資料中...</div></div>`;
+    box.appendChild(el);
+  }
+  // 酒店資訊卡片（Public，家長也可看）
+  {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.id = 'card-hotels';
+    el.innerHTML = `<div class="card-top"><div class="icon">🏨</div><div class="badge">public</div></div><h3>酒店資訊</h3><p>酒店名稱、地點、地址及電話</p><div class="card-footer"><span class="small">家長可見</span><button class="btn btn-light" data-card="hotels">進入</button></div><div class="inline-card-content hidden" id="inline-hotels"><div class="inline-card-body small">讀取資料中...</div></div>`;
+    box.appendChild(el);
+  }
   // 司機信息卡片（前端合成，不依賴後端 CARDS）
   if (can('member')) {
     const el = document.createElement('div');
@@ -157,6 +173,27 @@ async function openCard(cardId, shouldScroll = false) {
         heroBox.style.border = '1px solid rgba(255,255,255,.2)';
         heroBox.innerHTML = `<strong>🆘 個人緊急聯絡資料</strong><div style="margin-top:6px;font-size:12px;color:var(--hero-sub)">載入失敗：${err2.message}</div>`;
       }
+    }
+    return;
+  }
+
+  if (cardId === 'flights') {
+    const inline = document.getElementById('inline-flights');
+    const inlineBody = inline?.querySelector('.inline-card-body');
+    if (inline) { inline.classList.remove('hidden'); inlineBody.innerHTML = '<div class="small">讀取資料中...</div>'; }
+    inlineBody.innerHTML = renderFlightsPublic([]);
+    return;
+  }
+
+  if (cardId === 'hotels') {
+    const inline = document.getElementById('inline-hotels');
+    const inlineBody = inline?.querySelector('.inline-card-body');
+    if (inline) { inline.classList.remove('hidden'); inlineBody.innerHTML = '<div class="small">讀取資料中...</div>'; }
+    try {
+      const hData = await api('getCardData', { session: state.session, cardId: 'hotels' });
+      inlineBody.innerHTML = renderHotelsPublic(hData.rows || []);
+    } catch {
+      inlineBody.innerHTML = renderHotelsPublic([]);
     }
     return;
   }
