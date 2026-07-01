@@ -331,7 +331,6 @@ function renderHotelDetails(rows) {
   return html;
 }
 
-function renderTransport
 function renderTransport(rows) { return `<div class="list">${rows.map(r => `<div class="list-item"><strong>${formatCell(r.route)}</strong><div class="small" style="margin-top:6px">由：${formatCell(r.from_place)}</div><div class="small">到：${formatCell(r.to_place)}</div><div class="small">方式：${formatCell(r.method)}</div><div class="small">車程：約 ${formatCell(r.estimated_time)}</div><div class="small">費用：約 ${formatCell(r.estimated_cost)}</div>${r.note ? `<div class="small">備註：${formatCell(r.note)}</div>` : ''}</div>`).join('')}</div>`; }
 function renderRules(rows) { return `<div class="list">${[...rows].sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)).map(r => `<div class="list-item"><div>${formatCell(r.rule)}</div></div>`).join('')}</div>`; }
 
@@ -431,7 +430,6 @@ function renderFlightDetails(rows) {
   return html;
 }
 
-function formatCell
 function formatCell(v) { if (v == null || v === '') return '-'; if (typeof v === 'string' && /^https?:\/\//.test(v)) return `<a class="link" href="${v}" target="_blank">開啟連結</a>`; return String(v).replace(/\n/g, '<br>'); }
 
 /* ── 司機信息（可收合手風琴） ── */
